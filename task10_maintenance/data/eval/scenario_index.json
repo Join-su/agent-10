@@ -1,0 +1,125 @@
+[
+ {
+  "scenario_id": "S01",
+  "event_id": "EVT-2025-0034",
+  "expected_route": "grounded_draft",
+  "expected_reasons": [],
+  "truth_case": "correct",
+  "actual_failure_types": [
+   "HDF"
+  ],
+  "teaching_point": "HDF 정탐 — 판정 기준 두 조건이 모두 성립",
+  "variant": null
+ },
+ {
+  "scenario_id": "S02",
+  "event_id": "EVT-2025-0003",
+  "expected_route": "grounded_draft",
+  "expected_reasons": [],
+  "truth_case": "correct",
+  "actual_failure_types": [
+   "PWF"
+  ],
+  "teaching_point": "PWF 정탐·높은 확신 — 출력 범위 이탈",
+  "variant": null
+ },
+ {
+  "scenario_id": "S03",
+  "event_id": "EVT-2025-0015",
+  "expected_route": "grounded_draft",
+  "expected_reasons": [],
+  "truth_case": "correct",
+  "actual_failure_types": [
+   "OSF"
+  ],
+  "teaching_point": "OSF 정탐 — 부하 지수가 등급 한계 초과",
+  "variant": null
+ },
+ {
+  "scenario_id": "S04",
+  "event_id": "EVT-2025-0021",
+  "expected_route": "grounded_draft",
+  "expected_reasons": [],
+  "truth_case": "correct",
+  "actual_failure_types": [
+   "TWF"
+  ],
+  "teaching_point": "TWF 정탐·낮은 확신 — 확률보다 마모 시간과 교체 기록으로 판단",
+  "variant": null
+ },
+ {
+  "scenario_id": "S05",
+  "event_id": "EVT-2025-0024",
+  "expected_route": "grounded_draft",
+  "expected_reasons": [],
+  "truth_case": "false_alarm",
+  "actual_failure_types": [],
+  "teaching_point": "TWF 오탐인데 기준은 성립 — 경로로는 못 거르고 사람이 걸러야 함",
+  "variant": null
+ },
+ {
+  "scenario_id": "S06",
+  "event_id": "EVT-2025-0038",
+  "expected_route": "inspect_only",
+  "expected_reasons": [
+   "SOP-EA-01 8"
+  ],
+  "truth_case": "false_alarm",
+  "actual_failure_types": [],
+  "teaching_point": "HDF 경고 오탐 — 어떤 기준에도 해당하지 않음",
+  "variant": null
+ },
+ {
+  "scenario_id": "S07",
+  "event_id": "EVT-2025-0002",
+  "expected_route": "escalation",
+  "expected_reasons": [
+   "ESC-2"
+  ],
+  "truth_case": "correct",
+  "actual_failure_types": [
+   "PWF",
+   "OSF"
+  ],
+  "teaching_point": "복합 후보 — 후보 유형의 판정 기준이 모두 성립 (PWF + OSF)",
+  "variant": null
+ },
+ {
+  "scenario_id": "S08",
+  "event_id": "EVT-2025-0106",
+  "expected_route": "escalation",
+  "expected_reasons": [
+   "ESC-3"
+  ],
+  "truth_case": "false_alarm",
+  "actual_failure_types": [],
+  "teaching_point": "예측과 판정 불일치 — 예측 유형 기준은 아니고 다른 유형 기준에 해당",
+  "variant": null
+ },
+ {
+  "scenario_id": "S09",
+  "event_id": "EVT-2025-0089",
+  "expected_route": "escalation",
+  "expected_reasons": [
+   "ESC-7"
+  ],
+  "truth_case": "false_alarm",
+  "actual_failure_types": [],
+  "teaching_point": "경보인데 어떤 기준에도 해당하지 않음",
+  "variant": null
+ },
+ {
+  "scenario_id": "S10",
+  "event_id": "EVT-2025-0037",
+  "expected_route": "escalation",
+  "expected_reasons": [
+   "ESC-5"
+  ],
+  "truth_case": "correct",
+  "actual_failure_types": [
+   "HDF"
+  ],
+  "teaching_point": "조치 후 재발 — EVT-2025-0034 를 조치 완료(가정)한 뒤 23.0시간 만에 같은 유형",
+  "variant": "completed_repair_assumed"
+ }
+]

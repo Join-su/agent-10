@@ -1,0 +1,216 @@
+# 과제 10 실습 자료의 정본. Project명·Endpoint·Symbol·Notebook 파일명은 이 파일을 고치지 않고 바꿀 수 없다.
+# agent-workflow-lab-v2(STEP 03~06) 의 과제 10 부분만 떼어 낸 저장소다. 구조와 규칙은 v2 와 같다.
+version: 1
+
+course:
+  id: agent-10
+  title: 캡스톤 과제 10 — 제조 설비 이상 대응 지원 Agent
+  # 의도와 목적은 docs/PROJECT.md. 방향이 헷갈리면 거기부터 읽는다.
+  curriculum:
+    source: 한화시스템 ICT 과정
+    steps:
+      - id: s03
+        title: LLM 오케스트레이션 및 파이프라인 구축
+        hours: 32
+        stack: [LangChain, LCEL, 임베딩, Chroma, FAISS]
+        domain: 산업장비 기술문서
+      - id: s04
+        title: 실무형 RAG 시스템 구축 및 최적화
+        hours: 40
+        stack: [MultiQueryRetriever, BM25Retriever, EnsembleRetriever, ParentDocumentRetriever, Self-RAG]
+        domain: 보험 보상 문의
+      - id: s05
+        title: AI 에이전트 기획 및 툴 연동 실무
+        hours: 40
+        stack: [Function Calling, MCP, Agent Pattern]
+        domain: B2B 영업 견적
+      - id: s06
+        title: 멀티 에이전트 제어 및 파이프라인 자동화
+        hours: 32
+        stack: [LangGraph, Cyclic Graph, Human-in-the-Loop]
+        domain: 여신 심사 관제
+  prerequisite:
+    repository: agent-workflow-lab
+    # 선행 과정은 둘이다. 순서대로 이어진다.
+    courses:
+      - id: hanwha_0902
+        covers: [Python 문법, 자료형, 함수, 클래스와 상속, numpy, Streamlit 기초]
+      - id: agent-workflow-lab
+        covers: [Pydantic, FastAPI, Streamlit, Document와 splitter, 임베딩과 문턱,
+                 LangGraph StateGraph, 조건 분기, bounded loop, structured output,
+                 metadata filter, evidence gate, 명령 allowlist]
+      - id: agent-workflow-lab-v2
+        covers: [STEP 03 오케스트레이션, STEP 04 실무형 RAG, STEP 05 Agent·Tool, STEP 06 멀티 에이전트]
+    # 선행에서 실습한 개념. 이 목록의 항목은 어떤 Project의 new_concepts에도 올 수 없다.
+    #
+    # **"등장 금지"가 아니다.** 새 실습 주제로 삼지 않는다는 뜻이며, 앱에서는
+    # 계속 쓴다. 단계는 누적된다. 이것을 한 번 잘못 읽어 LangChain 이 주는 것을
+    # 전부 손으로 만든 적이 있다. docs/PROJECT.md §3 참조.
+    completed_concepts:
+      - 기본 RAG
+      - Document와 splitter
+      - citation
+      - evidence gate
+      - structured output
+      - metadata filter
+      - conditional routing
+      - bounded loop
+      - 명령 allowlist
+
+python: "3.13"
+
+audience:
+  assumed:
+    - Python 기본 문법
+    - 함수·클래스·dict·list
+    - 터미널에서 명령 실행
+  not_assumed:
+    - RAG
+    - LangChain
+    - LangGraph
+    - FastAPI
+    - Streamlit
+
+
+# 과정 전체에 걸친 Test. 주차 단위가 아니므로 projects 아래가 아니라 여기에 둔다.
+course_tests:
+  - tests/test_curriculum_manifest.py
+  - tests/test_notebook_contracts.py
+  - tests/test_cumulative_structure.py
+  - tests/test_notebook_inventory.py
+  - tests/test_notebook_quality.py
+  - tests/test_capability_qualification.py
+  - tests/test_docs_runtime_alignment.py
+  - tests/test_security_invariants.py
+  - tests/test_shared_layer.py
+  - tests/test_streamlit_smoke.py
+  - tests/test_advertised_settings_are_live.py
+  - tests/test_requirements_match_the_lockfile.py
+  - tests/test_misconfiguration_is_reported.py
+  - tests/test_libraries_are_not_reimplemented.py
+  - tests/test_container_image_matches_the_repository.py
+  - tests/test_the_ui_shows_why_a_request_failed.py
+  - tests/test_shared_rag_layer.py
+
+# 라이브러리가 제공하는 것을 손으로 만들지 않는다. 치운 수제 구현의 기록은
+# notebook_contracts.yaml 의 retired_reimplementations 에 있고
+# tests/test_libraries_are_not_reimplemented.py 가 되돌아오지 못하게 막는다.
+library_policy:
+  rule: 라이브러리가 제공하는 기능은 라이브러리로 쓴다
+  enforced_by: tests/test_libraries_are_not_reimplemented.py
+
+safety_invariants:
+  - synthetic_fixtures_only
+  - no_real_credentials
+  - no_external_write_tool
+  - executed_actions_always_empty
+
+# 이 이름을 쓰려면 아래 조건을 전부 충족해야 한다. 조건 없이 이름만 붙이는 과대표기를 막는다.
+capabilities:
+  lcel_orchestration:
+    title: LCEL 로 조립한 오케스트레이션
+    qualifies_when:
+      - retrieval_and_answer_are_one_runnable
+      - vector_backend_is_swappable
+      - embedding_profile_is_reported
+  hybrid_retrieval:
+    title: 하이브리드 검색과 자기 검증
+    qualifies_when:
+      - strategies_share_one_evaluation_set
+      - recall_and_rank_metrics_reported
+      - fusion_preserves_both_retrievers
+      - answer_is_blocked_when_not_grounded
+  tool_calling_agent:
+    title: 라이브러리가 도는 Tool 호출 Agent
+    qualifies_when:
+      - tools_declared_from_function_signatures
+      - the_agent_loop_comes_from_the_library
+      - every_call_is_recorded_not_assumed
+      - the_step_budget_is_enforced
+  mcp_tooling:
+    title: MCP 로 가져온 Tool 을 그대로 쓰기
+    qualifies_when:
+      - tools_arrive_from_a_separate_process
+      - only_read_only_tools_are_exposed
+  cyclic_graph:
+    title: 되돌아가는 그래프와 멈추는 조건
+    qualifies_when:
+      - the_graph_can_go_back
+      - the_cycle_has_a_termination_rule
+  human_approval:
+    title: 사람이 결정할 때까지 실제로 멈춤
+    qualifies_when:
+      - execution_actually_stops
+      - the_paused_case_is_addressable
+  multi_reviewer:
+    title: 담당을 갈라 병렬로 보고 합치기
+    qualifies_when:
+      - reviewers_run_in_parallel
+      - the_merge_uses_the_latest_report
+
+# 각 STEP 앱. status 가 current 인 것만 현행이다.
+
+# 이 저장소의 앱. status 가 current 인 것만 현행이다.
+projects:
+
+  - id: task10_maintenance
+    status: current
+    week: 8
+    difficulty: 8
+    title: 제조 설비 이상 대응 지원 Agent
+    domain: manufacturing_equipment_maintenance
+    user_problem: ML 이 고장 가능성을 감지해 이상 이벤트 카드를 보내도, 정비 담당자는 매뉴얼과 정비 이력을 따로 뒤져 근거를 모으고 SOP 에 따라 처리 경로를 정해야 한다. 예측이 틀리거나 판정 기준과 어긋나는 경우를 놓치기 쉽다.
+    user_outputs: [판정 기준 확인과 처리 경로, 근거를 인용한 원인 후보와 점검 절차 초안, 사람 검토를 거친 정비 보고서, 놓친 고장까지 센 시스템 재현율]
+    new_concepts: [ML 예측과 판정 기준 대조, 절 단위 청킹과 인용 번호, 임베딩 녹화와 재생, EventCard 질의와 하이브리드 검색,
+                   시점 경계가 있는 조회 Tool, 조회 Agent 실행 감사, MCP 서버로 읽기 전용 Tool 열기, 초안 출력 파서와 인용 검증,
+                   규칙 경로 분기와 횟수 제한 재작성, 병렬 담당과 reducer 합치기, 검토 멈춤과 다시 묻기, ML 과 Agent 종단 평가]
+    reused_not_reexplained: [Document와 splitter, structured output, conditional routing, bounded loop, evidence gate, citation]
+    revisits: [Chunking 전략 비교, 임베딩 모델과 차원 선택, 벡터 DB 선택, 하이브리드 검색과 순위 융합, LCEL 체인 조립,
+               Self-RAG 자기 검증, Function Calling 으로 Tool 정의, 관찰 판단 행동 루프, MCP 표준 연결,
+               순환 그래프와 종료 조건, 사람 승인 지점과 재개, 멀티에이전트 그래프 설계]
+    endpoints:
+      - {method: POST, path: /cases, request: CaseRequest, response: CaseResponse}
+      - {method: GET, path: "/cases/{case_id}", request: "-", response: CaseResponse}
+      - {method: POST, path: "/cases/{case_id}/decision", request: ReviewDecision, response: CaseResponse}
+      - {method: GET, path: /cards, request: "-", response: CardSummary}
+      - {method: GET, path: /evaluate, request: "-", response: "-"}
+      - {method: GET, path: /diagnostics, request: "-", response: "-"}
+    notebooks:
+      - {file: 01_eventcard_and_criteria.ipynb, type: agent_technique, integration: false}
+      - {file: 02_section_chunking.ipynb, type: agent_technique, integration: false}
+      - {file: 03_recorded_embeddings.ipynb, type: agent_technique, integration: false}
+      - {file: 04_hybrid_search.ipynb, type: agent_technique, integration: false}
+      - {file: 05_history_tool.ipynb, type: agent_technique, integration: false}
+      - {file: 06_lookup_agent.ipynb, type: agent_technique, integration: false}
+      - {file: 07_mcp_history_server.ipynb, type: agent_technique, integration: false}
+      - {file: 08_draft_chain.ipynb, type: agent_technique, integration: false}
+      - {file: 09_route_and_retry.ipynb, type: agent_technique, integration: false}
+      - {file: 10_parallel_collectors.ipynb, type: agent_technique, integration: false}
+      - {file: 11_review_pause.ipynb, type: agent_technique, integration: false}
+      - {file: 12_end_to_end_evaluation.ipynb, type: agent_technique, integration: true}
+    tests:
+      - task10_maintenance/tests/test_maintenance_agent.py
+    capabilities: [tool_calling_agent, mcp_tooling]
+    capability_proofs:
+      tool_calling_agent: task10_maintenance/tests/test_maintenance_agent.py::test_the_step_budget_is_reachable
+      mcp_tooling: task10_maintenance/tests/test_maintenance_agent.py::test_the_mcp_server_opens_exactly_the_read_only_tools
+    deliverables: []
+    safety_invariants:
+      - 설비를 제어하거나 작업 지시를 내리지 않는다. 보고서까지다
+      - 실행 목록은 실제 기록이며 언제나 비어 있다
+      - 사람 결정 없이 보고서가 되지 않는다
+      - 검사 오류가 있는 초안은 승인할 수 없다
+      - 이벤트 시각보다 뒤의 정비 기록을 근거로 쓰지 않는다
+      - EventCard 에 정답을 넣지 않는다. 정답은 평가 전용 파일에만 있다
+      - MCP 로 여는 Tool 은 읽기 전용 목록뿐이다
+    completion:
+      fixture:
+        - 대표 사례 10건이 SOP 의 기대 경로와 사유대로 검토 앞에서 멈춘다
+        - 매뉴얼 검색 순위가 녹화된 실제 임베딩으로 진짜다
+        - 이력 Agent 가 빠뜨린 유형을 감사가 찾고 코드가 채운다
+        - 검사 오류가 있는 초안의 승인이 422 로 막힌다
+        - THREAD_DB 를 주면 검토 대기 건이 재시작을 넘긴다
+        - 시스템 재현율이 경보가 없던 고장까지 넣어 계산된다
+      live:
+        - 실제 모델이 의존 순서를 지켜 이력 Tool 을 부른다
+        - 실제 모델이 쓴 초안이 인용 검사를 통과한다

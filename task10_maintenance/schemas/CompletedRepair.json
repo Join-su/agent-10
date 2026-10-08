@@ -1,0 +1,31 @@
+{
+ "additionalProperties": false,
+ "description": "이벤트를 처리해 조치를 끝낸 기록. 재발 판단(ESC-5)의 기준이다.\n\n경보가 연달아 온 것은 재발이 아니다. 같은 상태가 이어지면 30분마다 같은 경보가\n온다. **조치를 끝낸 뒤** 같은 유형이 다시 오는 것이 재발이다.",
+ "properties": {
+  "event_id": {
+   "title": "Event Id",
+   "type": "string"
+  },
+  "failure_type": {
+   "enum": [
+    "TWF",
+    "HDF",
+    "PWF",
+    "OSF"
+   ],
+   "title": "Failure Type",
+   "type": "string"
+  },
+  "completed_at": {
+   "title": "Completed At",
+   "type": "string"
+  }
+ },
+ "required": [
+  "event_id",
+  "failure_type",
+  "completed_at"
+ ],
+ "title": "CompletedRepair",
+ "type": "object"
+}

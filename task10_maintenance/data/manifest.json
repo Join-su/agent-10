@@ -1,0 +1,72 @@
+{
+ "source": {
+  "name": "UCI AI4I 2020 Predictive Maintenance Dataset",
+  "license": "CC BY 4.0",
+  "sha256": "dc6630cd9b1f0f853922fad78a1b6436570d3f1ec863f1dd5c4340ac56bc8a8e"
+ },
+ "seed": 7,
+ "split": {
+  "unit": "tool_wear_cycle",
+  "operation_share": 0.3,
+  "history_rows": 6993,
+  "operation_rows": 3007,
+  "history_period": [
+   "2025-03-03T06:00:00+09:00",
+   "2025-07-26T22:00:00+09:00"
+  ],
+  "operation_period": [
+   "2025-07-26T22:30:00+09:00",
+   "2025-09-27T13:30:00+09:00"
+  ]
+ },
+ "eventcards": {
+  "total": 111,
+  "by_predicted_type": {
+   "PWF": 38,
+   "HDF": 32,
+   "OSF": 23,
+   "TWF": 18
+  },
+  "by_confidence": {
+   "low": 49,
+   "medium": 38,
+   "high": 24
+  },
+  "by_case": {
+   "correct": 74,
+   "false_alarm": 37
+  },
+  "missed_failures": 25
+ },
+ "history": {
+  "total": 410,
+  "by_record_type": {
+   "failure_repair": 240,
+   "false_alarm_check": 86,
+   "tool_change": 84
+  },
+  "by_failure_type": {
+   "HDF": 82,
+   "OSF": 71,
+   "PWF": 62,
+   "TWF": 32,
+   "UNKNOWN": 7,
+   "RNF": 1
+  }
+ },
+ "files": {
+  "data/eval/event_truth.jsonl": "3a9eea02d8fedb580f864b0a17df551e9a18f8daf1593b71e694ddae1d54045d",
+  "data/eval/missed_failures.jsonl": "141cb9842fe65201540a8860fee25a3f2e052d57bb2bff5913d065c55242163b",
+  "data/eval/scenario_index.json": "0325aa9c6e8884981daabd270fe2b78ff48d9fd30ed70262834c16ec44376ced",
+  "data/eventcards/eventcards.jsonl": "b21b8b51231446dad4cf54f3554208433b6ef61115bfbe9bc898748fe5420a35",
+  "data/eventcards/scenarios.jsonl": "7b4e670ba29103be172508070a644a12794f137e60501025cb3a865b84a2a111",
+  "data/history/history.sqlite": "9f05377e3ebdcb94f36ef61f2d7979154cbb1f6951a18969661192bb20781a97",
+  "data/history/maintenance_history.jsonl": "fa749de2f1b775a45540fedf4fecca2d7c1e23170a5345b236753a80978485ce",
+  "data/manuals/md/MC01-MM.md": "e9fa95fa0c7790e0f425fa9f979ae2c4224aae86a070be01f627a171bfaabd2f",
+  "data/manuals/md/ML-GUIDE-01.md": "3774664fdd5f2c25fdff6ce59c80ac68303b498f9b7a67c5e8455315de32315e",
+  "data/manuals/md/SOP-EA-01.md": "e897fd3e5786f4e5d0e03e90962a54f008c720d09aeb8db23b0c00a24f398f1b",
+  "data/model/model_card.json": "c148044811c64a8a916d60fadfac0deec595fccb7463e1d2b1d8382d6255bd5b",
+  "data/source/.gitattributes": "3e93b65acabafcae6082ac5caff0b84099b80cf79faa556185ac65a878b3f9ed",
+  "data/source/ai4i2020.csv": "dc6630cd9b1f0f853922fad78a1b6436570d3f1ec863f1dd5c4340ac56bc8a8e"
+ }
+}

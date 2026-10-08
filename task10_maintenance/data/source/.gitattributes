@@ -1,0 +1,2 @@
+# AI4I 원본은 CRLF 그대로 둔다. build_dataset.py 가 SHA-256 으로 원본임을 확인한다.
+ai4i2020.csv -text -whitespace

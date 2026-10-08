@@ -1,0 +1,71 @@
+# 과제 10 을 한 번에 띄운다: Postgres(pgvector) → 적재 → API → 화면.
+# 컨테이너로 띄우면 매뉴얼 vector 와 정비 이력을 Postgres 에서 읽는다.
+# (로컬에서 uvicorn 으로 띄우면 기본은 메모리 FAISS 와 SQLite 다. docs/running-the-app.md)
+# 모든 포트는 127.0.0.1 에만 바인딩한다.
+services:
+  db:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    environment:
+      POSTGRES_DB: task10
+      POSTGRES_USER: task10
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    # 호스트에서 적재 스크립트·앱을 직접 돌릴 때 닿는 주소(.env 의 DATABASE_URL).
+    ports: ["127.0.0.1:5434:5432"]
+    volumes:
+      - task10_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U task10 -d task10"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  init:
+    build: .
+    # 한 번 돌고 끝난다. 매뉴얼 청크를 pgvector 에, 정비 이력을 Postgres 표에 적재한다.
+    command: ["sh", "-c", "python scripts/task10/ingest_manuals.py --backend pgvector && python scripts/task10/load_history.py"]
+    environment:
+      APP_MODE: ${APP_MODE:-fixture}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_EMBEDDING_DIMENSIONS: ${OPENAI_EMBEDDING_DIMENSIONS:-1536}
+      DATABASE_URL: postgresql+psycopg://task10:${POSTGRES_PASSWORD}@db:5432/task10
+    depends_on:
+      db: {condition: service_healthy}
+    restart: "no"
+
+  task10:
+    build: .
+    # 과제 10 API. 검토 대기 건은 THREAD_DB 에 남아 재시작을 넘는다.
+    command: ["uvicorn", "task10_maintenance.app:app", "--host", "0.0.0.0", "--port", "8035"]
+    environment:
+      APP_MODE: ${APP_MODE:-fixture}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OPENAI_EMBEDDING_DIMENSIONS: ${OPENAI_EMBEDDING_DIMENSIONS:-1536}
+      MCP_MODE: ${MCP_MODE:-off}
+      THREAD_DB: /data/threads.sqlite
+      VECTOR_BACKEND: pgvector
+      HISTORY_BACKEND: postgres
+      DATABASE_URL: postgresql+psycopg://task10:${POSTGRES_PASSWORD}@db:5432/task10
+    volumes:
+      - task10_threads:/data
+    ports: ["127.0.0.1:8035:8035"]
+    depends_on:
+      init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8035/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ui:
+    build: .
+    command: ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+    environment:
+      TASK10_API_URL: http://task10:8035
+    ports: ["127.0.0.1:8501:8501"]
+    depends_on:
+      task10: {condition: service_healthy}
+
+volumes:
+  task10_pgdata:
+  task10_threads:

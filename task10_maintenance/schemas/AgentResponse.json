@@ -1,0 +1,241 @@
+{
+ "$defs": {
+  "CauseCandidate": {
+   "additionalProperties": false,
+   "description": "원인 후보. **LLM 이 쓰되 근거 ID 가 없으면 받지 않는다.**",
+   "properties": {
+    "rank": {
+     "minimum": 1,
+     "title": "Rank",
+     "type": "integer"
+    },
+    "failure_type": {
+     "enum": [
+      "TWF",
+      "HDF",
+      "PWF",
+      "OSF",
+      "RNF",
+      "UNKNOWN"
+     ],
+     "title": "Failure Type",
+     "type": "string"
+    },
+    "rationale": {
+     "title": "Rationale",
+     "type": "string"
+    },
+    "evidence_ids": {
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "title": "Evidence Ids",
+     "type": "array"
+    }
+   },
+   "required": [
+    "rank",
+    "failure_type",
+    "rationale",
+    "evidence_ids"
+   ],
+   "title": "CauseCandidate",
+   "type": "object"
+  },
+  "CriterionResult": {
+   "additionalProperties": false,
+   "description": "매뉴얼 판정 기준 하나를 센서 값에 적용한 결과. **코드가 계산한다.**",
+   "properties": {
+    "failure_type": {
+     "enum": [
+      "TWF",
+      "HDF",
+      "PWF",
+      "OSF"
+     ],
+     "title": "Failure Type",
+     "type": "string"
+    },
+    "rule": {
+     "title": "Rule",
+     "type": "string"
+    },
+    "measured": {
+     "additionalProperties": {
+      "type": "number"
+     },
+     "title": "Measured",
+     "type": "object"
+    },
+    "met": {
+     "title": "Met",
+     "type": "boolean"
+    },
+    "citation": {
+     "description": "판정 기준이 적힌 매뉴얼 절. 예: MC01-MM 4.2.2",
+     "title": "Citation",
+     "type": "string"
+    }
+   },
+   "required": [
+    "failure_type",
+    "rule",
+    "measured",
+    "met",
+    "citation"
+   ],
+   "title": "CriterionResult",
+   "type": "object"
+  },
+  "EvidenceItem": {
+   "additionalProperties": false,
+   "description": "초안이 인용할 수 있는 근거. **검색·조회한 것만 들어온다.**",
+   "properties": {
+    "evidence_id": {
+     "description": "매뉴얼은 'MC01-MM 4.2.3', 이력은 'MR-0123'",
+     "title": "Evidence Id",
+     "type": "string"
+    },
+    "kind": {
+     "enum": [
+      "manual",
+      "history"
+     ],
+     "title": "Kind",
+     "type": "string"
+    },
+    "reason": {
+     "description": "왜 찾았는가. 예: 같은 유형 최근 기록",
+     "title": "Reason",
+     "type": "string"
+    },
+    "excerpt": {
+     "title": "Excerpt",
+     "type": "string"
+    }
+   },
+   "required": [
+    "evidence_id",
+    "kind",
+    "reason",
+    "excerpt"
+   ],
+   "title": "EvidenceItem",
+   "type": "object"
+  },
+  "InspectionStep": {
+   "additionalProperties": false,
+   "description": "점검·조치 단계. **LLM 이 쓰되 근거 ID 가 없으면 받지 않는다.**",
+   "properties": {
+    "order": {
+     "minimum": 1,
+     "title": "Order",
+     "type": "integer"
+    },
+    "instruction": {
+     "title": "Instruction",
+     "type": "string"
+    },
+    "evidence_ids": {
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "title": "Evidence Ids",
+     "type": "array"
+    }
+   },
+   "required": [
+    "order",
+    "instruction",
+    "evidence_ids"
+   ],
+   "title": "InspectionStep",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "description": "Agent 의 결과. 사람이 검토하기 전의 초안이다.\n\n코드가 채우는 필드: route, criteria_check, evidence, escalation_reasons, parts_to_prepare\nLLM 이 채우는 필드: cause_candidates, inspection_steps (grounded_draft 일 때만)\nescalation·inspect_only 는 문장까지 코드가 쓴다. drafted_by 가 그것을 밝힌다.",
+ "properties": {
+  "event_id": {
+   "title": "Event Id",
+   "type": "string"
+  },
+  "route": {
+   "enum": [
+    "grounded_draft",
+    "escalation",
+    "inspect_only"
+   ],
+   "title": "Route",
+   "type": "string"
+  },
+  "criteria_check": {
+   "items": {
+    "$ref": "#/$defs/CriterionResult"
+   },
+   "title": "Criteria Check",
+   "type": "array"
+  },
+  "evidence": {
+   "items": {
+    "$ref": "#/$defs/EvidenceItem"
+   },
+   "title": "Evidence",
+   "type": "array"
+  },
+  "escalation_reasons": {
+   "description": "SOP-EA-01 6장 조건 코드. 예: ESC-2",
+   "items": {
+    "type": "string"
+   },
+   "title": "Escalation Reasons",
+   "type": "array"
+  },
+  "cause_candidates": {
+   "items": {
+    "$ref": "#/$defs/CauseCandidate"
+   },
+   "title": "Cause Candidates",
+   "type": "array"
+  },
+  "inspection_steps": {
+   "items": {
+    "$ref": "#/$defs/InspectionStep"
+   },
+   "title": "Inspection Steps",
+   "type": "array"
+  },
+  "parts_to_prepare": {
+   "description": "근거에 나온 부품 번호",
+   "items": {
+    "type": "string"
+   },
+   "title": "Parts To Prepare",
+   "type": "array"
+  },
+  "drafted_by": {
+   "enum": [
+    "llm",
+    "fixture_script",
+    "code"
+   ],
+   "title": "Drafted By",
+   "type": "string"
+  }
+ },
+ "required": [
+  "event_id",
+  "route",
+  "criteria_check",
+  "evidence",
+  "escalation_reasons",
+  "cause_candidates",
+  "inspection_steps",
+  "parts_to_prepare",
+  "drafted_by"
+ ],
+ "title": "AgentResponse",
+ "type": "object"
+}

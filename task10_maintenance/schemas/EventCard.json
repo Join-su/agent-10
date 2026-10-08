@@ -1,0 +1,238 @@
+{
+ "$defs": {
+  "Prediction": {
+   "additionalProperties": false,
+   "properties": {
+    "model_id": {
+     "title": "Model Id",
+     "type": "string"
+    },
+    "predicted_failure_type": {
+     "enum": [
+      "TWF",
+      "HDF",
+      "PWF",
+      "OSF"
+     ],
+     "title": "Predicted Failure Type",
+     "type": "string"
+    },
+    "probabilities": {
+     "additionalProperties": {
+      "type": "number"
+     },
+     "propertyNames": {
+      "enum": [
+       "TWF",
+       "HDF",
+       "PWF",
+       "OSF"
+      ]
+     },
+     "title": "Probabilities",
+     "type": "object"
+    },
+    "thresholds": {
+     "additionalProperties": {
+      "type": "number"
+     },
+     "propertyNames": {
+      "enum": [
+       "TWF",
+       "HDF",
+       "PWF",
+       "OSF"
+      ]
+     },
+     "title": "Thresholds",
+     "type": "object"
+    },
+    "candidates": {
+     "description": "임계값을 넘은 유형 전부. 둘 이상이면 복합 의심",
+     "items": {
+      "enum": [
+       "TWF",
+       "HDF",
+       "PWF",
+       "OSF"
+      ],
+      "type": "string"
+     },
+     "title": "Candidates",
+     "type": "array"
+    },
+    "confidence_level": {
+     "enum": [
+      "high",
+      "medium",
+      "low"
+     ],
+     "title": "Confidence Level",
+     "type": "string"
+    },
+    "top_signals": {
+     "items": {
+      "$ref": "#/$defs/Signal"
+     },
+     "title": "Top Signals",
+     "type": "array"
+    }
+   },
+   "required": [
+    "model_id",
+    "predicted_failure_type",
+    "probabilities",
+    "thresholds",
+    "candidates",
+    "confidence_level",
+    "top_signals"
+   ],
+   "title": "Prediction",
+   "type": "object"
+  },
+  "SensorSnapshot": {
+   "additionalProperties": false,
+   "description": "이벤트 시점의 센서 값. AI4I 2020 의 다섯 값에 파생 값 둘을 더했다.",
+   "properties": {
+    "air_temperature_k": {
+     "title": "Air Temperature K",
+     "type": "number"
+    },
+    "process_temperature_k": {
+     "title": "Process Temperature K",
+     "type": "number"
+    },
+    "rotational_speed_rpm": {
+     "title": "Rotational Speed Rpm",
+     "type": "number"
+    },
+    "torque_nm": {
+     "title": "Torque Nm",
+     "type": "number"
+    },
+    "tool_wear_min": {
+     "title": "Tool Wear Min",
+     "type": "number"
+    },
+    "temp_diff_k": {
+     "description": "공정 온도 - 공기 온도",
+     "title": "Temp Diff K",
+     "type": "number"
+    },
+    "power_w": {
+     "description": "토크 × 각속도. 스핀들 기계 출력",
+     "title": "Power W",
+     "type": "number"
+    }
+   },
+   "required": [
+    "air_temperature_k",
+    "process_temperature_k",
+    "rotational_speed_rpm",
+    "torque_nm",
+    "tool_wear_min",
+    "temp_diff_k",
+    "power_w"
+   ],
+   "title": "SensorSnapshot",
+   "type": "object"
+  },
+  "Signal": {
+   "additionalProperties": false,
+   "description": "모델이 이 예측을 낸 데 가장 크게 기여한 입력.",
+   "properties": {
+    "feature": {
+     "title": "Feature",
+     "type": "string"
+    },
+    "value": {
+     "title": "Value",
+     "type": "number"
+    },
+    "reference": {
+     "description": "학습 기간의 평균값",
+     "title": "Reference",
+     "type": "number"
+    },
+    "contribution": {
+     "description": "로지스틱 회귀의 기여도(계수 × 표준화 값)",
+     "title": "Contribution",
+     "type": "number"
+    }
+   },
+   "required": [
+    "feature",
+    "value",
+    "reference",
+    "contribution"
+   ],
+   "title": "Signal",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "description": "ML 이 고장 가능성을 감지해 만든 이상 이벤트. **Agent 의 입력이다.**",
+ "properties": {
+  "event_id": {
+   "pattern": "^EVT-2025-\\d{4}$",
+   "title": "Event Id",
+   "type": "string"
+  },
+  "equipment_id": {
+   "const": "MC-01",
+   "title": "Equipment Id",
+   "type": "string"
+  },
+  "detected_at": {
+   "title": "Detected At",
+   "type": "string"
+  },
+  "severity": {
+   "enum": [
+    "alarm",
+    "warning"
+   ],
+   "title": "Severity",
+   "type": "string"
+  },
+  "product_id": {
+   "title": "Product Id",
+   "type": "string"
+  },
+  "quality_grade": {
+   "enum": [
+    "L",
+    "M",
+    "H"
+   ],
+   "title": "Quality Grade",
+   "type": "string"
+  },
+  "sensor_snapshot": {
+   "$ref": "#/$defs/SensorSnapshot"
+  },
+  "prediction": {
+   "$ref": "#/$defs/Prediction"
+  },
+  "data_lineage": {
+   "additionalProperties": {
+    "type": "string"
+   },
+   "title": "Data Lineage",
+   "type": "object"
+  }
+ },
+ "required": [
+  "event_id",
+  "equipment_id",
+  "detected_at",
+  "severity",
+  "product_id",
+  "quality_grade",
+  "sensor_snapshot",
+  "prediction",
+  "data_lineage"
+ ],
+ "title": "EventCard",
+ "type": "object"
+}

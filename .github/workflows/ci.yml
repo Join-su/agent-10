@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # 깨끗한 환경에서 lockfile 그대로 설치되지 않으면 여기서 멈춘다.
+      - name: Frozen install
+        run: uv sync --frozen
+
+      - name: Source compiles
+        run: uv run python -m compileall -q shared task10_maintenance app_pages streamlit_app.py scripts
+
+      # 정본 계약·과제 10 Test·Notebook 구조와 실행을 한 번에 검증한다(fixture, DB 없음).
+      - name: Contract, unit and notebook tests
+        run: uv run pytest -q
+
+      - name: No trailing whitespace or conflict markers
+        run: git diff --check

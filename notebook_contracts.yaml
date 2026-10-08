@@ -1,0 +1,221 @@
+# Notebook의 정본. 파일명·학습목표·Primitive·Assertion은 이 파일을 고치지 않고 바꿀 수 없다.
+version: 1
+
+common:
+  audience_ref: curriculum_manifest.yaml#audience
+  required_headings: [현업 시나리오, 학습 목표, 직접 조립, 중간 결과, 실패 경계, 실제 app 연결]
+  required_closing: 다음 Notebook 연결
+  min_markdown_cells: 3
+  min_code_cells: 3
+  fixture_prefixes: [practice_, mini_, sample_]
+  require_assertion: true
+  require_success_and_failure_fixture: true
+  max_new_concepts_per_notebook: 1
+  forbidden_imports: []
+  forbidden_calls: [create_app, build_workflow, build_review_graph]
+
+
+# 라이브러리가 제공하는 것을 손으로 만들지 않는다.
+#
+# 한 번 `completed_concepts` 를 "등장 금지"로 잘못 읽어 LangChain·LangGraph 가
+# 주는 것을 전부 다시 구현한 적이 있다. 학습자는 개념은 배우지만 실무에서 쓸
+# 이름을 배우지 못한다. STEP 03~06 재편에서 **일곱 군데를 전부 치웠다.**
+#
+# 아래는 그 기록이다. `symbol` 이 다시 나타나면 Test 가 막는다.
+# `use` 경로는 설치된 버전에서 실제로 import 되는 것을 확인해 적는다.
+retired_reimplementations:
+  - what: BM25 키워드 검색
+    use: langchain_community.retrievers.BM25Retriever
+    symbols: [bm25_retrieve]
+  - what: 다중 질의 생성
+    use: langchain_classic.retrievers.MultiQueryRetriever
+    symbols: [multi_query]
+  - what: 순위 융합
+    use: langchain_classic.retrievers.EnsembleRetriever
+    symbols: [reciprocal_rank_fusion]
+  - what: 부모 문서 복원
+    use: langchain_classic.retrievers.ParentDocumentRetriever
+    symbols: [restore_parents]
+  - what: Tool 선언과 인자 검증
+    use: langchain_core.tools.StructuredTool
+    symbols: [TOOL_SCHEMAS, validate_arguments]
+  - what: Tool 호출 루프
+    use: langchain.agents.create_agent
+    symbols: [run_tool_loop]
+  - what: MCP 세션 연결과 전송
+    use: langchain_mcp_adapters.client.MultiServerMCPClient
+    symbols: [EventLoopThread, payload_of]
+  - what: Thread 체크포인트 저장소
+    use: langgraph.checkpoint.sqlite.aio.AsyncSqliteSaver
+    symbols: [SqliteThreadStore, JsonPlusSerializerCompat]
+
+notebooks:
+  # ---------- task10_maintenance (캡스톤 과제 10) ----------
+  - file: 01_eventcard_and_criteria.ipynb
+    project: task10_maintenance
+    order: 1
+    notebook_type: agent_technique
+    new_concepts: [ML 예측과 판정 기준 대조]
+    objective: EventCard 를 계약으로 받고 매뉴얼 판정 기준을 센서 값에 적용해 예측과 어긋나는 카드를 구별한다
+    primitives: [practice_card_ok, practice_criteria, practice_mismatch]
+    fixtures:
+      success: 예측과 판정이 같은 HDF 카드
+      failure: 정답 필드가 섞인 카드, 예측(OSF)과 판정(TWF)이 어긋나는 카드
+    observe: [계약이 거부한 필드, 유형별 판정, 예측과 판정의 차이]
+    assertions: [정답 필드와 없는 유형이 거부된다, HDF 만 성립한다, 예측 유형이 판정에 없다]
+    app_link: 과제 10 App 의 `domain.py::EventCard` 가 같은 계약(정답 없음, extra 금지)이고, `criteria.py::check_criteria` 가 네 유형을 모두 계산해 매뉴얼 절 번호와 함께 돌려줍니다. 둘이 어긋나면 `routing.py::decide_route` 가 ESC-3 으로 escalation 합니다.
+
+  - file: 02_section_chunking.ipynb
+    project: task10_maintenance
+    order: 2
+    notebook_type: agent_technique
+    new_concepts: [절 단위 청킹과 인용 번호]
+    objective: 머리말로 잘라 절마다 인용 번호를 붙이고 머리말 경로로 BM25 가 절을 찾게 한다
+    primitives: [practice_length_chunks, practice_sections, practice_pdf_pages]
+    fixtures:
+      success: 머리말 경로를 붙인 절 단위 조각
+      failure: 글자 수로 자른 조각, PDF 에서 읽은 글자
+    observe: [인용할 절을 정할 수 없는 조각 수, 절 단위 조각의 인용 번호, 머리말 경로 유무에 따른 BM25 1위, PDF 에서 절 번호가 붙은 조각 수]
+    assertions: [글자 수 자르기가 절을 섞는다, 머리말 경로를 붙이면 4.2.3 이 1위다, PDF 에서는 절 번호가 0개다]
+    app_link: 과제 10 의 적재 스크립트 `scripts/task10/ingest_manuals.py` 가 같은 방식(머리말 → 600자 재분할 → 머리말 경로 → 인용 번호)으로 매뉴얼 세 권을 69개 청크로 자릅니다. `--pdf` 로 돌리면 33개 청크가 나오고 절 번호가 붙은 것은 0개입니다. 앱은 `evidence.py::load_chunks` 로 md 청크를 읽고, `evidence.py::manual_section` 이 절 번호로 판정 기준 절을 바로 꺼냅니다.
+
+  - file: 03_recorded_embeddings.ipynb
+    project: task10_maintenance
+    order: 3
+    notebook_type: agent_technique
+    new_concepts: [임베딩 녹화와 재생]
+    objective: CacheBackedEmbeddings 로 임베딩을 녹화하고 두 번째부터 API 없이 재생하며 녹화에 없는 문장은 멈춘다
+    primitives: [practice_embeddings, practice_store, practice_replay]
+    fixtures:
+      success: 녹화된 문장의 재생
+      failure: 녹화에 없는 문장
+    observe: [vector 길이, API 호출 수, 재생 vector 와 원본의 일치, 녹화에 없는 문장의 멈춤]
+    assertions: [두 번째에는 API 를 부르지 않는다, 재생 vector 가 원본과 같다, 녹화에 없는 문장은 멈춘다]
+    app_link: 과제 10 App 의 `evidence.py::recorded_embeddings` 가 같은 방식(namespace `text-embedding-3-small-256-`, sha256 키)으로 `data/index/recorded_embeddings/` 를 재생하고, `evidence.py::_Unrecorded` 가 녹화에 없는 문장을 멈춥니다. 녹화는 `scripts/task10/record_embeddings.py` 로 한 번 합니다(OpenAI 비용이 듭니다). 벡터 저장소는 `shared/rag/store.py::build_store` 가 FAISS 로 만듭니다.
+
+  - file: 04_hybrid_search.ipynb
+    project: task10_maintenance
+    order: 4
+    notebook_type: agent_technique
+    new_concepts: [EventCard 질의와 하이브리드 검색]
+    objective: 카드에서 질의를 만들고 BM25 와 의미 검색을 EnsembleRetriever 로 합쳐 한쪽만으로 놓치는 것을 잡는다
+    primitives: [practice_queries, practice_keyword, practice_hybrid]
+    fixtures:
+      success: 융합 검색이 두 질의의 정답을 모두 담는 경우
+      failure: 부품 번호를 못 찾는 의미 검색, 상황 질의를 못 찾는 글자 검색
+    observe: [카드에서 나온 질의, 검색기별 1위, 융합 결과]
+    assertions: [글자 검색만 부품 번호를 찾는다, 의미 검색만 상황 질의를 찾는다, 융합이 둘 다 담는다]
+    app_link: 과제 10 App 의 `evidence.py::card_queries` 가 같은 규칙으로 질의를 만들고, `evidence.py::hybrid` 가 녹화된 임베딩의 FAISS 와 `shared/rag/retrievers.py::keyword_retriever`(한국어 2글자 묶음 BM25)를 0.5 / 0.5 로 합칩니다. `evidence.py::find_evidence` 가 질의마다 3개씩 찾고 같은 절은 한 번만 남깁니다.
+
+  - file: 05_history_tool.ipynb
+    project: task10_maintenance
+    order: 5
+    notebook_type: agent_technique
+    new_concepts: [시점 경계가 있는 조회 Tool]
+    objective: "@tool 로 이력 조회를 열고 조회 시점으로 이벤트 뒤의 기록을 막으며 잘못된 인자와 쓰기를 막는다"
+    primitives: [practice_db, practice_history_tool, practice_leaky]
+    fixtures:
+      success: 이벤트 전 기록만 돌려주는 조회
+      failure: 시점 경계가 없는 조회, 없는 유형, 틀린 시각, 삭제
+    observe: [Tool 스키마의 enum, 경계 유무에 따른 조회 결과, 각 시도가 막히는 곳]
+    assertions: [경계가 미래 기록을 막는다, 없는 유형과 틀린 시각이 막힌다, 읽기 전용 연결이 삭제를 거부한다]
+    app_link: 과제 10 App 의 `tools.py::same_type_history` 가 같은 모양의 Tool 이고, `tools.py::_moment` 가 시각 형식을 막습니다. 조회는 `history.py::HistoryStore` 가 맡으며 조회마다 `mode=ro` 연결을 새로 엽니다. Tool 은 이것 말고도 판정 기준(`check_criteria`), 과거 오탐 점검, 마지막 공구 교체를 엽니다.
+
+  - file: 06_lookup_agent.ipynb
+    project: task10_maintenance
+    order: 6
+    notebook_type: agent_technique
+    new_concepts: [조회 Agent 실행 감사]
+    objective: create_agent 로 Tool Agent 를 돌리고 메시지 기록에서 의존 순서와 빠진 유형을 찾는다
+    primitives: [practice_agent, practice_audit, practice_skipping]
+    fixtures:
+      success: 판정 다음 턴에 두 유형 이력을 모두 부른 실행
+      failure: 판정과 같은 턴에 예측 유형만 부른 실행, 상한 1
+    observe: [턴별 호출, 감사 결과, 빠뜨린 실행과 상한 소진의 감사 결과]
+    assertions: [정상 실행은 빠진 유형이 없다, 빠뜨린 실행에서 TWF 를 찾아낸다, 상한 1 은 이력까지 가지 못한다]
+    app_link: 과제 10 App 의 `lookup.py::fixture_plan` 이 같은 순서의 대본(fixture)이고, live 에서는 실제 모델이 스스로 고릅니다. `lookup.py::read_run` 이 기록에서 의존 순서와 빠진 유형을 읽고, `lookup.py::STEP_BUDGET` 이 상한 4 입니다. Agent 조립은 `shared/tools/agent.py::build_agent` 가 맡습니다. 빠진 유형은 `review.py::collect_history` 가 코드로 채우고 응답의 `filled_history_types` 에 남깁니다.
+
+  - file: 07_mcp_history_server.ipynb
+    project: task10_maintenance
+    order: 7
+    notebook_type: agent_technique
+    new_concepts: [MCP 서버로 읽기 전용 Tool 열기]
+    objective: FastMCP 서버가 읽기 전용 목록의 Tool 만 열고 MCP 를 거친 실패를 결과 모양으로 판단한다
+    primitives: [practice_server_path, practice_mcp_tools, practice_succeeded]
+    fixtures:
+      success: 정상 인자로 부른 MCP Tool
+      failure: 없는 유형으로 부른 MCP Tool
+    observe: [서버가 연 Tool, 받아 온 Tool 의 타입과 enum, 정상과 실패의 결과 모양]
+    assertions: [읽기 전용 목록만 열린다, 실패는 오류 글자로 온다, 오류 글자를 성공으로 세지 않는다]
+    app_link: 과제 10 App 의 `mcp_server.py::server` 가 `tools.py` 의 읽기 전용 목록에서 Tool 을 가져와 등록하고, 목록 밖 Tool 을 등록하려 하면 뜨지 않습니다. `MCP_MODE=on` 이면 `lookup.py::lookup_tools` 가 `shared/tools/mcp.py::mcp_tools` 로 이 서버를 자식 Process 로 띄워 Tool 을 받습니다. `lookup.py::succeeded` 가 결과 모양까지 보고 성공을 판단합니다.
+
+  - file: 08_draft_chain.ipynb
+    project: task10_maintenance
+    order: 8
+    notebook_type: agent_technique
+    new_concepts: [초안 출력 파서와 인용 검증]
+    objective: 프롬프트 | 모델 | PydanticOutputParser 로 초안을 받고 근거 목록 밖 인용과 단정 표현을 찾는다
+    primitives: [practice_chain, practice_validate, practice_invented]
+    fixtures:
+      success: 근거 목록 안에서만 인용한 초안
+      failure: 없는 절을 인용하고 원인을 단정한 초안, 형식이 깨진 출력
+    observe: [체인의 타입, 검사 결과, 형식 오류]
+    assertions: [좋은 초안은 오류가 없다, 지어낸 절과 단정 표현이 잡힌다, 형식이 깨진 출력은 파서에서 막힌다]
+    app_link: 과제 10 App 의 `drafting.py::write_draft` 가 `PROMPT | model` 다음에 `drafting.py::PARSER`(PydanticOutputParser)로 초안을 받고, 형식 오류는 `DraftParseError` 로 바꿔 검사 실패로 돌립니다. 내용 검사는 `routing.py::validate_response` 가 맡고, 단정 표현 목록은 `routing.py::ASSERTIVE` 입니다. 검사는 이것 말고도 후보 순위·단계 번호가 1부터 이어지는지, 부품 번호가 근거에 있는지를 봅니다.
+
+  - file: 09_route_and_retry.ipynb
+    project: task10_maintenance
+    order: 9
+    notebook_type: agent_technique
+    new_concepts: [규칙 경로 분기와 횟수 제한 재작성]
+    objective: SOP 규칙으로 경로를 나누고 검사에 실패한 초안을 상한 안에서 다시 쓰게 한다
+    primitives: [practice_route, practice_graph, practice_bounded]
+    fixtures:
+      success: 두 번째 초안이 통과한 흐름
+      failure: 늘 틀리는 초안
+    observe: [카드별 경로와 사유, 경로마다 지나간 노드, 상한에서 멈춘 시도 수와 남은 오류]
+    assertions: [세 경로가 규칙대로 갈린다, 실패한 초안을 한 번 더 쓴다, 상한에서 오류를 단 채 멈춘다]
+    app_link: 과제 10 App 의 `routing.py::decide_route` 가 같은 규칙(ESC-2·3·4·5·7)이고, ESC-5(조치 완료 뒤 24시간 안 재발)는 요청에 함께 온 조치 완료 기록으로 판단합니다. 되돌아가는 조건은 `review.py::after_validate`, 상한은 `review.py::MAX_ATTEMPTS`(2)입니다.
+
+  - file: 10_parallel_collectors.ipynb
+    project: task10_maintenance
+    order: 10
+    notebook_type: agent_technique
+    new_concepts: [병렬 담당과 reducer 합치기]
+    objective: 두 담당을 START 에서 함께 돌리고 reducer 로 결과를 모두 남긴 뒤 합치는 노드에서 중복을 지운다
+    primitives: [practice_refused, practice_merged, practice_deduped]
+    fixtures:
+      success: reducer 를 주고 merge 에서 중복을 지운 경우
+      failure: reducer 없이 두 담당이 같은 칸에 쓴 경우
+    observe: [reducer 없을 때의 거부, 두 담당의 결과, 중복을 지운 근거]
+    assertions: [reducer 없이는 거부된다, 두 담당의 결과가 모두 남는다, merge 가 중복을 지운다]
+    app_link: 과제 10 App 의 `review.py::collect_manual` 과 `review.py::collect_history` 가 START 에서 함께 시작하고, 두 칸(`manual_found`, `history_found`)에 `operator.add` reducer 가 붙어 있습니다(`review.py::CaseState`). `review.py::merge` 가 같은 근거를 한 번만 남기고 판정 기준을 다시 계산합니다.
+
+  - file: 11_review_pause.ipynb
+    project: task10_maintenance
+    order: 11
+    notebook_type: agent_technique
+    new_concepts: [검토 멈춤과 다시 묻기]
+    objective: interrupt 로 검토 앞에서 멈추고 Command 로 이어 가며 받을 수 없는 결정은 다시 묻는다
+    primitives: [practice_paused, practice_stuck, practice_reasked]
+    fixtures:
+      success: 다시 묻는 방식으로 escalate 까지 간 경우
+      failure: 받을 수 없는 결정에 예외를 던져 굳은 경우
+    observe: [멈춘 시점의 packet 과 다음 노드, 재개 뒤 앞 단계 실행 횟수, 예외 방식과 다시 묻기 방식의 차이]
+    assertions: [실행이 실제로 끊긴다, 앞 단계는 다시 돌지 않는다, 예외 방식은 굳고 다시 묻기는 풀린다]
+    app_link: 과제 10 App 의 `review.py::review` 가 같은 다시 묻기 방식으로 멈추고, `review.py::refusal` 이 받을 수 없는 결정의 이유를 만들며, `review.py::allowed_decisions` 가 검사 오류가 있으면 approve 를 뺍니다. `app.py::decide` 는 그래프에 닿기 전에 같은 목록으로 422 를 돌려줍니다. 저장소는 `shared/graph/checkpoint.py::thread_store` 가 고르고, `THREAD_DB` 를 주면 파일에 남아 재시작을 넘깁니다.
+
+  - file: 12_end_to_end_evaluation.ipynb
+    project: task10_maintenance
+    order: 12
+    notebook_type: agent_technique
+    integration: true
+    new_concepts: [ML 과 Agent 종단 평가]
+    objective: 병렬 수집·경로·검토·보고서를 한 그래프로 잇고 경보가 없던 고장까지 넣어 시스템 재현율을 계산한다
+    primitives: [practice_pipeline, evaluation_cases, practice_missed]
+    fixtures:
+      success: 경보 카드와 놓친 고장을 모두 넣은 평가
+      failure: 경보로 온 카드만 본 Agent 재현율
+    observe: [한 그래프의 흐름, 경로별 실제 고장과 오탐, Agent 재현율과 시스템 재현율]
+    assertions: [두 카드가 보고서까지 간다, 경로별 수가 맞다, 시스템 재현율이 Agent 재현율보다 낮다]
+    app_link: 과제 10 App 의 `evaluation.py::evaluate` 가 같은 평가를 실제 데이터로 합니다. 대표 사례 S01~S10 은 10건 모두 기대 경로대로 가고, 경보 카드 111장은 grounded_draft 75장(실제 고장 63) · escalation 17장(11) · inspect_only 19장(0)입니다. 운영 기간 실제 고장 99건 중 74건이 경보로 와서 **시스템 재현율은 74.7%** 이고, 놓친 25건 중 10건이 TWF 입니다. 경로는 `evaluation.py::route_for` 가 그래프와 같은 규칙으로 정하고, `GET /evaluate`(`app.py::evaluate`)가 이 결과를 돌려줍니다.

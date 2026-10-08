@@ -1,0 +1,52 @@
+{
+ "additionalProperties": false,
+ "description": "평가 전용. Agent 에게 주지 않는다.",
+ "properties": {
+  "event_id": {
+   "title": "Event Id",
+   "type": "string"
+  },
+  "machine_failure": {
+   "title": "Machine Failure",
+   "type": "boolean"
+  },
+  "actual_failure_types": {
+   "items": {
+    "enum": [
+     "TWF",
+     "HDF",
+     "PWF",
+     "OSF",
+     "RNF",
+     "UNKNOWN"
+    ],
+    "type": "string"
+   },
+   "title": "Actual Failure Types",
+   "type": "array"
+  },
+  "prediction_correct": {
+   "title": "Prediction Correct",
+   "type": "boolean"
+  },
+  "case": {
+   "enum": [
+    "correct",
+    "type_mismatch",
+    "false_alarm",
+    "label_inconsistent"
+   ],
+   "title": "Case",
+   "type": "string"
+  }
+ },
+ "required": [
+  "event_id",
+  "machine_failure",
+  "actual_failure_types",
+  "prediction_correct",
+  "case"
+ ],
+ "title": "EventTruth",
+ "type": "object"
+}
