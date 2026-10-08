@@ -1,17 +1,13 @@
-"""벡터스토어를 고르는 한 곳.
+"""벡터스토어를 만드는 한 곳.
 
-STEP 03 의 학습 주제 중 하나가 **벡터 DB 선택**이다. 셋을 같은 인터페이스로
-놓아야 바꿔 보며 비교할 수 있다. 전부 LangChain 의 `VectorStore` 계약을 따르므로
-조립하는 쪽 코드는 바뀌지 않는다.
+과제 10 앱은 **Postgres 의 pgvector 하나**를 쓴다. 매뉴얼 vector·정비 이력·검토 대기 건이
+모두 같은 Postgres 에 있다. FAISS 는 프로세스 메모리에 만드는 것이라 Test 와 비교용으로만 남겼다.
+둘 다 LangChain 의 `VectorStore` 계약을 따르므로 조립하는 쪽 코드는 바뀌지 않는다.
 
 | 백엔드 | 어디에 있나 | 언제 쓰나 |
 |---|---|---|
-| `chroma` | 프로세스 메모리 | 기본값. 키도 DB 도 없이 돈다 |
-| `faiss` | 프로세스 메모리 | 같은 코드가 다른 구현에서도 도는지 확인할 때 |
-| `pgvector` | 별도 Postgres | 프로세스가 죽어도 남아야 할 때. 운영 형태다 |
-
-앞의 둘은 프로세스가 끝나면 사라진다. 세 번째만 남는다. **그 차이가
-"벡터 DB 를 고른다"는 말의 실체다.**
+| `pgvector` | Postgres | 앱. 프로세스가 죽어도 남는다. 운영 형태다 |
+| `faiss` | 프로세스 메모리 | Test·비교. 프로세스가 끝나면 사라진다 |
 """
 from __future__ import annotations
 
@@ -31,7 +27,7 @@ class StoreConfigurationError(RuntimeError):
 
 def store_backends() -> tuple[str, ...]:
     """고를 수 있는 것. Notebook 과 진단이 같은 목록을 읽는다."""
-    return ("chroma", "faiss", "pgvector")
+    return ("pgvector", "faiss")
 
 
 def database_url() -> str:
@@ -45,45 +41,29 @@ def backend_availability() -> dict[str, bool]:
     pgvector 는 DB 가 떠 있어야 쓸 수 있다. 목록에 있다는 이유로 쓸 수 있다고
     말하면, 고른 뒤에야 안 된다는 것을 알게 된다.
     """
-    return {"chroma": True, "faiss": True, "pgvector": bool(database_url())}
+    return {"pgvector": bool(database_url()), "faiss": True}
 
 
-def build_store(documents: Sequence[Document], *, backend: str | None = None,
+def build_store(documents: Sequence[Document], *, backend: str = "pgvector",
                 embeddings: Embeddings | None = None,
-                collection: str = "step03") -> VectorStore:
-    """문서를 실어 벡터스토어를 만든다.
+                collection: str = "task10-manuals") -> VectorStore:
+    """문서를 실어 벡터스토어를 만든다. 기본은 pgvector 다(적재 스크립트가 쓴다).
 
-    `backend` 를 주지 않으면 환경 변수 `VECTOR_BACKEND` 를 보고, 그것도 없으면
-    Chroma 를 쓴다. 두 구현이 같은 계약을 따르므로 부르는 쪽은 무엇이 오는지
-    몰라도 된다.
+    두 구현이 같은 계약을 따르므로 부르는 쪽은 무엇이 오는지 몰라도 된다.
     """
-    chosen = (backend or os.getenv("VECTOR_BACKEND", "chroma")).strip().lower()
+    chosen = backend.strip().lower()
     if chosen not in store_backends():
         raise StoreConfigurationError(
-            f"VECTOR_BACKEND 는 {', '.join(store_backends())} 중 하나여야 합니다. 받은 값: {chosen!r}"
+            f"backend 는 {', '.join(store_backends())} 중 하나여야 합니다. 받은 값: {chosen!r}"
         )
     if not documents:
         raise StoreConfigurationError("적재할 문서가 없습니다.")
 
     model = embeddings or embedding_model()
-    if chosen == "chroma":
-        from langchain_chroma import Chroma
-
-        # 메모리에 만든다. 프로세스가 끝나면 사라진다.
-        #
-        # **같은 이름으로 다시 만들면 이전 것을 지운다.** Chroma 는 기본 client 를
-        # 프로세스 안에서 공유하므로, 같은 collection 이름으로 `from_documents` 를
-        # 두 번 부르면 문서가 쌓인다(47 → 94 → 141). 전략을 여러 개 만드는
-        # 평가에서 실행 순서에 따라 점수가 달라졌고, 원인을 찾기 어려운 형태였다.
-        # `build_store` 는 "쌓는다"가 아니라 "만든다"여야 한다.
-        store = Chroma(collection_name=collection, embedding_function=model)
-        store.reset_collection()
-        store.add_documents(list(documents))
-        return store
-
     if chosen == "faiss":
         from langchain_community.vectorstores import FAISS
 
+        # 메모리에 만든다. 프로세스가 끝나면 사라진다.
         return FAISS.from_documents(list(documents), model)
 
     return _pgvector_store(documents, model, collection)

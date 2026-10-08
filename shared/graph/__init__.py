@@ -10,12 +10,9 @@ STEP 03·04 가 `shared/rag` 에 검색을, STEP 05 가 `shared/tools` 에 Tool 
 |---|---|
 | 그래프 조립·순환·병렬 | `langgraph.graph.StateGraph` |
 | 실행 중단과 재개 | `langgraph.types.interrupt` · `Command` |
-| Thread 저장 | `langgraph.checkpoint.sqlite.SqliteSaver` |
+| Thread 저장 | `langgraph.checkpoint.postgres.aio.AsyncPostgresSaver` |
 
-마지막 항목은 한때 손으로 만들었다. `langgraph-checkpoint-sqlite` 2.0.10 이
-`langgraph-checkpoint` 4.2.0 의 직렬화 API 와 맞지 않아 `BaseCheckpointSaver` 를
-237줄로 직접 구현했고, 그 근거를 파일에 적어 두었다. **3.1.1 에서 고쳐졌다.**
-근거가 사라졌으므로 수제 구현을 지우고 라이브러리를 쓴다.
+Thread 저장소도 손으로 만들지 않는다. 매뉴얼 vector·정비 이력과 같은 Postgres 에 둔다.
 """
 from shared.graph.checkpoint import (
     ThreadStoreError,

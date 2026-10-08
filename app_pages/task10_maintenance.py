@@ -25,9 +25,8 @@ if diagnostics:
                       border=True)
     columns[2].metric("이력 Tool", "MCP" if diagnostics["tool_source"] == "mcp" else "내부",
                       border=True)
-    columns[3].metric("멈춘 건",
-                      "파일에 남음" if diagnostics["thread_durability"] == "file"
-                      else "재시작 시 소실", border=True)
+    columns[3].metric("DB", "Postgres" if diagnostics.get("database", "").startswith("postgres")
+                      else diagnostics.get("database", "?"), border=True)
     if warning := diagnostics.get("warning"):
         st.warning(warning, icon=":material/warning:")
     if note := diagnostics.get("note"):

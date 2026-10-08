@@ -5,7 +5,8 @@
 질의는 카드의 후보 유형과 근거 신호로 만든다. LLM 에게 질의를 쓰게 하지 않는다.
 같은 카드는 언제나 같은 질의가 되어야 결과를 비교할 수 있다.
 
-**임베딩은 세 가지 중 하나다.**
+**의미 검색은 Postgres 의 pgvector 컬렉션을 읽는다.** 적재는 scripts/task10/ingest_manuals.py 가
+같은 임베딩으로 미리 해 둔다. 질의를 vector 로 바꾸는 임베딩은 둘 중 하나다.
 
     recorded  실제 OpenAI 임베딩을 녹화해 둔 것. 키 없이도 의미 검색 순위가 진짜다 (기본)
     live      실제 OpenAI 임베딩을 지금 부른다 (APP_MODE=live)
@@ -28,10 +29,9 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.retrievers import BaseRetriever
 
 from shared.rag import dense_retriever, embedding_model, embedding_profile, is_live_mode, keyword_retriever
-from shared.rag.store import build_store
 from task10_maintenance import postgres
 from task10_maintenance.domain import EventCard, EvidenceItem
-from task10_maintenance.postgres import PostgresUnavailable, vector_backend
+from task10_maintenance.postgres import PostgresUnavailable
 
 ROOT = Path(__file__).resolve().parent
 CHUNKS = ROOT / "data" / "index" / "manual_chunks.jsonl"
@@ -154,18 +154,16 @@ def _pgvector_store(vectors: Embeddings, expected: int):
 
 
 @lru_cache(maxsize=4)
-def hybrid(source: str, backend: str = "faiss", weights: tuple[float, float] = WEIGHTS) -> BaseRetriever:
-    """의미 검색과 BM25 를 EnsembleRetriever 로 합친다. 설정마다 한 번만 만든다.
+def hybrid(source: str, url: str, weights: tuple[float, float] = WEIGHTS) -> BaseRetriever:
+    """의미 검색(pgvector)과 BM25 를 EnsembleRetriever 로 합친다. 설정마다 한 번만 만든다.
 
-    의미 검색 저장소는 `VECTOR_BACKEND` 로 고른다. faiss(기본)·chroma 는 켤 때 메모리에
-    만들고, pgvector 는 미리 적재한 컬렉션을 읽는다. BM25 는 셋 다 같은 청크 파일로 만든다.
+    의미 검색은 미리 적재한 pgvector 컬렉션을 읽는다. BM25 는 같은 청크 파일로 메모리에 만든다
+    (BM25 는 DB 가 아니라 단어 통계라 켤 때 다시 계산해도 같다).
     """
+    del url   # 캐시 열쇠로만 쓴다. DB 가 바뀌면 다시 연다
     chunks = load_chunks()
     vectors = embedding_model() if source == "live" else recorded_embeddings()
-    if backend == "pgvector":
-        store = _pgvector_store(vectors, expected=len(chunks))
-    else:
-        store = build_store(chunks, backend=backend, embeddings=vectors, collection="task10-manuals")
+    store = _pgvector_store(vectors, expected=len(chunks))
     return EnsembleRetriever(retrievers=[dense_retriever(store, k=PER_QUERY + 1),
                                          keyword_retriever(chunks, k=PER_QUERY + 1)],
                              weights=list(weights))
@@ -173,7 +171,7 @@ def hybrid(source: str, backend: str = "faiss", weights: tuple[float, float] = W
 
 def find_evidence(card: EventCard) -> tuple[list[tuple[str, str]], list[EvidenceItem], dict[str, list[str]]]:
     """질의마다 찾고, 같은 절은 한 번만 남긴다. 절이 곧 인용의 단위다."""
-    retriever = hybrid(embedding_source(), vector_backend())
+    retriever = hybrid(embedding_source(), postgres.required_url())
     queries = card_queries(card)
     evidence: list[EvidenceItem] = []
     per_query: dict[str, list[str]] = {}

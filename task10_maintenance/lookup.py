@@ -56,7 +56,8 @@ def tool_source() -> str:
 async def lookup_tools() -> list[BaseTool]:
     """같은 Tool 을 안에서 얻거나 별도 Process(MCP)에서 얻는다. Agent 쪽 코드는 모른다."""
     if mcp_enabled():
-        return list(await mcp_tools({"history": stdio_server(MCP_SERVER_MODULE)}))
+        # 서버의 Tool 이 정비 이력(Postgres)을 읽으므로 DB 주소만 넘긴다.
+        return list(await mcp_tools({"history": stdio_server(MCP_SERVER_MODULE, pass_env=("DATABASE_URL",))}))
     return list(LOCAL_TOOLS)
 
 

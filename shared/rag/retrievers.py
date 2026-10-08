@@ -12,16 +12,12 @@ from collections.abc import Callable, Sequence
 from langchain_classic.retrievers import (
     EnsembleRetriever,
     MultiQueryRetriever,
-    ParentDocumentRetriever,
 )
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.stores import InMemoryStore
 from langchain_core.vectorstores import VectorStore
-from langchain_text_splitters import RecursiveCharacterTextSplitter, TextSplitter
 
 DEFAULT_K = 4
 
@@ -92,35 +88,6 @@ def expanded_retriever(base: BaseRetriever, model: BaseChatModel) -> BaseRetriev
     변형을 만들고 결과를 합친다.
     """
     return MultiQueryRetriever.from_llm(retriever=base, llm=model)
-
-
-def parent_document_retriever(parents: Sequence[Document], embeddings: Embeddings, *,
-                              child_splitter: TextSplitter | None = None,
-                              k: int = DEFAULT_K,
-                              collection: str = "parents") -> ParentDocumentRetriever:
-    """조각으로 찾고 원문으로 답한다.
-
-    작은 조각은 정확히 맞히지만 그것만으로는 답할 수 없다. 조항 전문이 있어야
-    한다. `ParentDocumentRetriever` 가 자식으로 찾아 부모를 돌려준다.
-
-    `parent_splitter` 를 주지 않는다. 그러면 **넘긴 문서 하나가 그대로 부모**가
-    된다. 보험 약관에서 부모는 글자 수가 아니라 조항이다. 크기로 다시 자르면
-    조항이 두 부모로 갈라진다.
-    """
-    if not parents:
-        raise RetrieverConfigurationError("부모 문서가 없습니다.")
-
-    from langchain_chroma import Chroma
-
-    retriever = ParentDocumentRetriever(
-        vectorstore=Chroma(collection_name=collection, embedding_function=embeddings),
-        docstore=InMemoryStore(),
-        child_splitter=child_splitter or RecursiveCharacterTextSplitter(
-            chunk_size=120, chunk_overlap=20),
-        search_kwargs={"k": k},
-    )
-    retriever.add_documents(list(parents))
-    return retriever
 
 
 def dense_retriever(store: VectorStore, *, k: int = DEFAULT_K) -> BaseRetriever:

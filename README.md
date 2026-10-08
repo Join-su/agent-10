@@ -18,18 +18,24 @@
 
 ## 바로 시작하기
 
+**DB 는 Postgres(pgvector 확장 포함) 하나입니다.** 매뉴얼 vector, 정비 이력, 검토 대기 건이 모두
+여기 있습니다. Docker 로 DB 를 띄우고 한 번 적재한 뒤 앱을 띄웁니다. API 키는 필요 없습니다(fixture).
+
 ```bash
 uv sync --frozen
 cp .env.example .env
+docker compose --env-file .env up -d db
+uv run --env-file .env python scripts/task10/ingest_manuals.py
+uv run --env-file .env python scripts/task10/load_history.py
 uv run pytest -q
 ```
 
 | 하고 싶은 것 | 명령 |
 |---|---|
-| API (fixture, 키·DB 없이) | `uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env` |
+| API (fixture) | `uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env` |
 | 화면 | `uv run streamlit run streamlit_app.py` → http://127.0.0.1:8501 |
-| Notebook | `uv run jupyter lab task10_maintenance/notebooks` |
-| 컨테이너로 한 번에 (Postgres 포함) | `docker compose --env-file .env up -d --build` |
+| Notebook (DB 필요 없음) | `uv run jupyter lab task10_maintenance/notebooks` |
+| 컨테이너로 한 번에 (DB·적재·API·화면) | `docker compose --env-file .env up -d --build` |
 
 자세한 순서와 문제 해결은 [`docs/running-the-app.md`](docs/running-the-app.md).
 
@@ -43,7 +49,7 @@ uv run pytest -q
 |---|---|---|
 | 01 | EventCard 와 판정 기준 | Pydantic 계약, ML 예측 ≠ 판정 |
 | 02 | 절 단위로 자르기 | 머리말 분할, 절 번호 인용, PDF 구조 손실 |
-| 03 | 임베딩 녹화와 재생 | FAISS, CacheBackedEmbeddings |
+| 03 | 임베딩 녹화와 재생 | 벡터 저장소, CacheBackedEmbeddings |
 | 04 | 하이브리드 검색 | BM25 + 의미 검색, EnsembleRetriever |
 | 05 | 시점 경계가 있는 조회 Tool | `@tool`, Literal enum, 읽기 전용 DB |
 | 06 | 조회 Agent 와 실행 감사 | `create_agent`, 호출 상한, 기록 감사 |
@@ -68,10 +74,10 @@ STEP 03~06 에서 배운 기법도 이 앱을 이해하는 데 필요하면 설�
 | `task10_maintenance/` | **과제 10** — 앱, Notebook 12개, 데이터, Test |
 | `shared/` | 앱이 조립하는 공용 계층 — `rag`(검색), `tools`(Tool Agent·MCP), `graph`(멈춤·재개) |
 | `app_pages/`, `streamlit_app.py` | 화면. API 를 HTTP 로만 부른다 |
-| `scripts/task10/` | 데이터 생성·매뉴얼 적재·Postgres 적재·임베딩 녹화 |
+| `scripts/task10/` | 데이터 생성·임베딩 녹화·DB 적재(매뉴얼 → pgvector, 정비 이력 → Postgres 표) |
 | `scripts/build_notebooks.py`, `scripts/notebook_specs_task10.py` | Notebook 생성기와 내용 |
 | `tests/` | 정본·Notebook·화면·컨테이너·보안 검사 |
-| `Dockerfile`, `compose.yml` | 컨테이너 (db → init → task10 → ui) |
+| `Dockerfile`, `compose.yml` | 컨테이너 (db → init(적재) → task10 → ui) |
 
 ## 규칙
 

@@ -17,6 +17,7 @@ CASE = {"event_id": "EVT-2025-0034"}
 
 def _clear_caches() -> None:
     """설정을 바꿔도 캐시에 남은 저장소가 답하면 검사가 무의미하다."""
+    from shared.graph.checkpoint import reset_thread_store
     from task10_maintenance import app as app_module
     from task10_maintenance.evaluation import evaluate
     from task10_maintenance.evidence import hybrid
@@ -24,13 +25,13 @@ def _clear_caches() -> None:
 
     for cached in (hybrid, _store, evaluate):
         cached.cache_clear()
+    reset_thread_store()
     app_module.reset_graph()
 
 
 @pytest.fixture(autouse=True)
 def clean(monkeypatch):
-    for name in ("VECTOR_BACKEND", "HISTORY_BACKEND", "DATABASE_URL", "THREAD_DB", "MCP_MODE"):
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("MCP_MODE", raising=False)
     _clear_caches()
     yield
     _clear_caches()
@@ -49,7 +50,7 @@ def live_without_a_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
 
-def test_a_missing_key_answers_503_with_a_reason(live_without_a_key):
+def test_a_missing_key_answers_503_with_a_reason(live_without_a_key, database):
     response = _client().post("/cases", json=CASE)
     assert response.status_code == 503, f"{response.status_code} 로 답했다"
     body = response.json()
@@ -63,11 +64,9 @@ def test_diagnostics_still_answers_200_so_it_can_be_used_to_diagnose(live_withou
     assert response.json()["mode"] == "live"
 
 
-@pytest.mark.parametrize("setting", [{"VECTOR_BACKEND": "pgvector"}, {"HISTORY_BACKEND": "postgres"}])
-def test_postgres_without_a_database_url_answers_503_and_names_the_command(monkeypatch, setting):
+def test_no_database_url_answers_503_and_names_the_command(monkeypatch):
     monkeypatch.setenv("APP_MODE", "fixture")
-    for name, value in setting.items():
-        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
     response = _client().post("/cases", json=CASE)
 
@@ -75,15 +74,13 @@ def test_postgres_without_a_database_url_answers_503_and_names_the_command(monke
     message = response.json()["message"]
     assert "DATABASE_URL" in message
     assert "docker compose up -d db" in message, f"다음에 칠 명령을 말하지 않는다: {message}"
+    assert _client().get("/diagnostics").status_code == 200, "진단까지 막혔다"
 
 
-@pytest.mark.parametrize("setting", [{"VECTOR_BACKEND": "pgvector"}, {"HISTORY_BACKEND": "postgres"}])
-def test_a_database_that_is_not_there_answers_503(monkeypatch, setting):
+def test_a_database_that_is_not_there_answers_503(monkeypatch):
     """주소는 있는데 DB 가 안 떠 있는 경우도 마찬가지다."""
     monkeypatch.setenv("APP_MODE", "fixture")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://task10:x@127.0.0.1:5999/nothing_here")
-    for name, value in setting.items():
-        monkeypatch.setenv(name, value)
 
     response = _client().post("/cases", json=CASE)
 
@@ -92,8 +89,8 @@ def test_a_database_that_is_not_there_answers_503(monkeypatch, setting):
     assert "docker compose ps db" in response.json()["message"]
 
 
-def test_fixture_mode_is_untouched(monkeypatch):
-    """설정이 없어도 fixture 는 그대로 답한다. 이것이 기본 경로다(메모리 FAISS·SQLite)."""
+def test_fixture_mode_is_untouched(monkeypatch, database):
+    """키가 없어도 fixture 는 그대로 답한다. DB 는 Postgres 하나다."""
     monkeypatch.setenv("APP_MODE", "fixture")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
@@ -101,7 +98,7 @@ def test_fixture_mode_is_untouched(monkeypatch):
     assert response.status_code == 200
     assert response.json()["packet"]["evidence"], "근거 없이 검토로 넘겼다"
     diagnostics = _client().get("/diagnostics").json()
-    assert (diagnostics["vector_backend"], diagnostics["history_backend"]) == ("faiss", "sqlite")
+    assert diagnostics["database"] == "postgres (pgvector)"
 
 
 def test_the_handler_refuses_to_swallow_everything():

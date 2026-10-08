@@ -1,6 +1,6 @@
 # 과제 10 을 한 번에 띄운다: Postgres(pgvector) → 적재 → API → 화면.
-# 컨테이너로 띄우면 매뉴얼 vector 와 정비 이력을 Postgres 에서 읽는다.
-# (로컬에서 uvicorn 으로 띄우면 기본은 메모리 FAISS 와 SQLite 다. docs/running-the-app.md)
+# DB 는 Postgres 하나다. 매뉴얼 vector · 정비 이력 · 검토 대기 건이 모두 db 에 있다.
+# 로컬에서 uvicorn 으로 띄울 때도 db 만 먼저 띄워 같은 DB 를 쓴다: docker compose up -d db
 # 모든 포트는 127.0.0.1 에만 바인딩한다.
 services:
   db:
@@ -22,7 +22,7 @@ services:
   init:
     build: .
     # 한 번 돌고 끝난다. 매뉴얼 청크를 pgvector 에, 정비 이력을 Postgres 표에 적재한다.
-    command: ["sh", "-c", "python scripts/task10/ingest_manuals.py --backend pgvector && python scripts/task10/load_history.py"]
+    command: ["sh", "-c", "python scripts/task10/ingest_manuals.py && python scripts/task10/load_history.py"]
     environment:
       APP_MODE: ${APP_MODE:-fixture}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -34,7 +34,7 @@ services:
 
   task10:
     build: .
-    # 과제 10 API. 검토 대기 건은 THREAD_DB 에 남아 재시작을 넘는다.
+    # 과제 10 API. 검토 대기 건도 db 에 남아 재시작을 넘는다.
     command: ["uvicorn", "task10_maintenance.app:app", "--host", "0.0.0.0", "--port", "8035"]
     environment:
       APP_MODE: ${APP_MODE:-fixture}
@@ -42,12 +42,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       OPENAI_EMBEDDING_DIMENSIONS: ${OPENAI_EMBEDDING_DIMENSIONS:-1536}
       MCP_MODE: ${MCP_MODE:-off}
-      THREAD_DB: /data/threads.sqlite
-      VECTOR_BACKEND: pgvector
-      HISTORY_BACKEND: postgres
       DATABASE_URL: postgresql+psycopg://task10:${POSTGRES_PASSWORD}@db:5432/task10
-    volumes:
-      - task10_threads:/data
     ports: ["127.0.0.1:8035:8035"]
     depends_on:
       init: {condition: service_completed_successfully}
@@ -68,4 +63,3 @@ services:
 
 volumes:
   task10_pgdata:
-  task10_threads:

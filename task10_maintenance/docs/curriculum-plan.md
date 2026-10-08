@@ -169,13 +169,26 @@ ESC-4(근거 없음)는 데이터로 만들 수 없어 테스트에서 근거를
 
 ## 8. agent-10 — 팀원 공유용 독립 저장소 (2026-10-08)
 
-v2 에서 과제 10 만 떼어 `agent-10` 으로 만들었다. 실행 방법(fixture · live · FastAPI · Streamlit · Docker compose)은 v2 와 같다. v2 에 없는 것이 하나 있다.
+v2 에서 과제 10 만 떼어 `agent-10` 으로 만들었다. 실행 방법(fixture · live · FastAPI · Streamlit · Docker compose)은 v2 와 같다. **이후 과제 10 은 agent-10 만 고친다.**
 
-**Postgres(pgvector) 선택 기능.** 기본은 여전히 메모리 FAISS(매뉴얼 vector)와 SQLite(정비 이력)라 키·DB 없이 돈다. `VECTOR_BACKEND=pgvector`, `HISTORY_BACKEND=postgres` 를 주면 둘 다 Postgres 에서 읽는다. 앱은 읽기만 하고 적재는 `scripts/task10/ingest_manuals.py --backend pgvector`, `scripts/task10/load_history.py` 가 한다. compose 로 띄우면 db → init(적재) → task10 → ui 순서로 Postgres 를 쓴다.
+### DB 를 Postgres(pgvector) 하나로 통일 (2026-10-08 결정)
+
+처음에는 v2 처럼 "설치 없이 도는 기본값(메모리 FAISS·SQLite)"과 "Postgres 선택"을 함께 두었다. 그러자 DB 종류가 FAISS·Chroma·SQLite·Postgres 로 늘어 팀원이 헷갈렸고, 현업에서도 한 역할에 저장소를 여러 개 바꿔 끼우지는 않는다. 그래서 **앱의 DB 를 Postgres 하나로 통일**했다. pgvector 는 Postgres 안의 확장이라 따로 세지 않는다.
+
+| 데이터 | 전 | 후 |
+|---|---|---|
+| 매뉴얼 vector | 메모리 FAISS (선택 pgvector) | pgvector 표. `ingest_manuals.py` 가 녹화 임베딩으로 적재 |
+| 정비 이력 | SQLite 파일 (선택 Postgres) | Postgres 표. `load_history.py` 가 **JSONL 원본**에서 적재(SQLite 파일은 지웠다) |
+| 검토 대기 건 | 메모리 또는 SQLite 파일(`THREAD_DB`) | Postgres 표(`langgraph-checkpoint-postgres`) |
+
+- 의존성: `langgraph-checkpoint-postgres` 추가, `langgraph-checkpoint-sqlite`·`langchain-chroma` 제거(하위 패키지 40개가 함께 빠졌다).
+- 앱은 업무 데이터를 읽기만 한다. 정비 이력은 읽기 전용 세션(`default_transaction_read_only`)으로 연다.
+- **Notebook 은 그대로 둔다(사용자 결정).** 03·04 의 메모리 vector 저장소, 05 의 임시 SQLite 는 기법을 작게 보여 주는 연습용이다. Notebook 은 DB 없이 돈다.
+- Test 는 DB 가 필요하다. DB 가 없으면 건너뛰지 않고 안내와 함께 실패한다(앱의 유일한 저장소라, DB 없이 통과하면 아무것도 검사하지 않은 것이다). CI 도 같은 Postgres 이미지를 띄우고 적재한 뒤 돌린다.
 
 | 확인한 것 (2026-10-08) | 결과 |
 |---|---|
-| 메모리와 Postgres 의 근거 비교 (카드 111장) | 정비 이력 111장 모두 같음. 매뉴얼 근거는 절 집합이 모두 같고 8장에서 순서만 다름(FAISS L2 와 pgvector 코사인의 근소한 차이) |
-| 평가 | 두 저장소 모두 대표 사례 10건 통과, 시스템 재현율 74.7% |
-| Test | DB 없이 220 통과·5 건너뜀, Postgres 를 붙이면 225 통과 |
-| docker compose (fixture) | 네 서비스 기동, 검토 → 승인 → 보고서, API 재시작 뒤 검토 대기 건 유지 |
+| 메모리(FAISS)와 pgvector 의 근거 비교, 카드 111장 (통일 전에 잼) | 절 집합은 모두 같음. 8장에서 순서만 다름(FAISS L2 와 pgvector 코사인의 근소한 차이) |
+| 평가 (pgvector·Postgres) | 대표 사례 10건 통과, 시스템 재현율 74.7% — 통일 전과 같음 |
+| JSONL 적재 | 정비 이력 410건 · 교체 부품 325행. SQLite 에서 옮겼을 때와 같음 |
+| Test | DB 를 붙여 221 통과 |

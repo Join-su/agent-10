@@ -412,7 +412,7 @@ except PracticeNotRecorded as error:
  },
  "middle": "vector 길이(256), FAISS 적재 때의 API 호출 수(7), 녹화 후 다시 요청할 때의 호출 수(0), 재생 vector 가 원본과 같은지, 그리고 녹화에 없는 문장이 멈추는지를 확인합니다.",
  "failure": "녹화본은 **녹화한 문장에만** 답합니다. 매뉴얼을 한 글자 고치거나 질의 만드는 규칙을 바꾸면 녹화를 다시 해야 합니다. 그때 녹화에 없는 문장을 가짜 vector 로 채우면 앱은 아무 경고 없이 엉뚱한 순위를 냅니다. 그래서 멈추게 했습니다.",
- "app_link": "과제 10 App 의 `evidence.py::recorded_embeddings` 가 같은 방식(namespace `text-embedding-3-small-256-`, sha256 키)으로 `data/index/recorded_embeddings/` 를 재생하고, `evidence.py::_Unrecorded` 가 녹화에 없는 문장을 멈춥니다. 녹화는 `scripts/task10/record_embeddings.py` 로 한 번 합니다(OpenAI 비용이 듭니다). 벡터 저장소는 `shared/rag/store.py::build_store` 가 FAISS 로 만듭니다.",
+ "app_link": "과제 10 App 의 `evidence.py::recorded_embeddings` 가 같은 방식(namespace `text-embedding-3-small-256-`, sha256 키)으로 `data/index/recorded_embeddings/` 를 재생하고, `evidence.py::_Unrecorded` 가 녹화에 없는 문장을 멈춥니다. 녹화는 `scripts/task10/record_embeddings.py` 로 한 번 합니다(OpenAI 비용이 듭니다). 앱의 벡터 저장소는 Postgres 의 pgvector 이고, 적재 스크립트 `scripts/task10/ingest_manuals.py` 가 같은 녹화 임베딩으로 `shared/rag/store.py::build_store` 를 불러 한 번 넣습니다. 이 Notebook 의 FAISS 는 메모리에 잠깐 만드는 연습용입니다.",
  "next": "다음 `04_hybrid_search.ipynb` 에서는 EventCard 로 질의를 만들고, 글자 검색과 의미 검색을 함께 씁니다.",
 })
 
@@ -522,7 +522,7 @@ for practice_name, practice_q in (("부품 번호", practice_code_query), ("상�
  },
  "middle": "카드 하나에서 나온 질의 셋, 두 질의에 대한 글자 검색과 의미 검색의 결과, 그리고 융합 결과에 양쪽의 정답이 모두 들어오는 것을 확인합니다.",
  "failure": "여기 의미 검색은 개념 사전으로 뜻을 흉내 낸 것이라 **순위 자체는 대본입니다.** 실제 앱은 녹화된 OpenAI 임베딩을 쓰므로 순위가 진짜입니다. 그래도 하이브리드가 모든 것을 찾지는 못합니다. 실제 카드 111장의 유형 질의 126개 중 1개(EVT-2025-0044 HDF)는 근거 신호가 예측 유형의 것뿐이라 유형 절을 놓칩니다. 그래서 앱은 판정 기준 절을 검색에 맡기지 않고 절 번호로 바로 붙입니다.",
- "app_link": "과제 10 App 의 `evidence.py::card_queries` 가 같은 규칙으로 질의를 만들고, `evidence.py::hybrid` 가 녹화된 임베딩의 FAISS 와 `shared/rag/retrievers.py::keyword_retriever`(한국어 2글자 묶음 BM25)를 0.5 / 0.5 로 합칩니다. `evidence.py::find_evidence` 가 질의마다 3개씩 찾고 같은 절은 한 번만 남깁니다.",
+ "app_link": "과제 10 App 의 `evidence.py::card_queries` 가 같은 규칙으로 질의를 만들고, `evidence.py::hybrid` 가 Postgres 의 pgvector 컬렉션(`evidence.py::_pgvector_store`, 녹화된 임베딩으로 적재)과 `shared/rag/retrievers.py::keyword_retriever`(한국어 2글자 묶음 BM25)를 0.5 / 0.5 로 합칩니다. `evidence.py::find_evidence` 가 질의마다 3개씩 찾고 같은 절은 한 번만 남깁니다.",
  "next": "다음 `05_history_tool.ipynb` 에서는 매뉴얼이 아니라 정비 이력을 조회하는 Tool 을 만듭니다.",
 })
 
@@ -643,7 +643,7 @@ print(json.loads(practice_history_tool.invoke({"failure_type": "HDF", "before": 
  },
  "middle": "Tool 스키마의 enum, 시점 경계가 있을 때와 없을 때의 조회 결과, 그리고 없는 유형·틀린 시각·삭제가 각각 무엇에 막히는지 확인합니다.",
  "failure": "시점 경계는 `before` 값이 맞을 때만 의미가 있습니다. 모델이 시각을 지어내거나 \"오늘\"을 넣으면 경계가 있어도 미래 기록이 들어옵니다. 그래서 앱은 Agent 에게 EventCard 의 `detected_at` 을 그대로 넣으라고 지시하고, 결과를 다시 코드로 확인합니다. Test 가 시나리오마다 \"돌려준 기록이 모두 이벤트보다 앞선다\"를 검사합니다.",
- "app_link": "과제 10 App 의 `tools.py::same_type_history` 가 같은 모양의 Tool 이고, `tools.py::_moment` 가 시각 형식을 막습니다. 조회는 `history.py::HistoryStore` 가 맡으며 조회마다 `mode=ro` 연결을 새로 엽니다. Tool 은 이것 말고도 판정 기준(`check_criteria`), 과거 오탐 점검, 마지막 공구 교체를 엽니다.",
+ "app_link": "과제 10 App 의 `tools.py::same_type_history` 가 같은 모양의 Tool 이고, `tools.py::_moment` 가 시각 형식을 막습니다. 조회는 `history.py::HistoryStore` 가 Postgres 표에서 맡으며 조회마다 읽기 전용 세션(`postgres.py::connect`)을 새로 엽니다. 이 Notebook 의 임시 SQLite 는 연습용입니다. Tool 은 이것 말고도 판정 기준(`check_criteria`), 과거 오탐 점검, 마지막 공구 교체를 엽니다.",
  "next": "다음 `06_lookup_agent.ipynb` 에서는 이 Tool 들을 Agent 에게 쥐여 주고, Agent 가 실제로 무엇을 불렀는지 기록에서 확인합니다.",
 })
 
@@ -1342,8 +1342,8 @@ for practice_try_decision in ("approve", "approve", "reject"):
     print(practice_try_decision, "→", practice_try.get("__interrupt__", [None])[0] and practice_try["__interrupt__"][0].value.get("message"), practice_try.get("report"))''',
  },
  "middle": "멈춘 시점의 packet 과 다음 노드, 재개 뒤 보고서와 앞 단계 실행 횟수, 그리고 예외 방식이 굳는 것과 다시 묻는 방식이 풀리는 것을 확인합니다.",
- "failure": "checkpointer 가 프로세스 메모리(InMemorySaver)면 재시작 한 번에 검토 대기 중이던 건이 사라집니다. **기다리라고 해 놓고 잊는 것**이라 운영에서는 파일 저장소를 씁니다. 또 저장소에서 상태를 꺼낼 때 허용할 타입을 정하지 않으면 LangGraph 가 경고하고, 다음 버전부터는 꺼내기를 막습니다.",
- "app_link": "과제 10 App 의 `review.py::review` 가 같은 다시 묻기 방식으로 멈추고, `review.py::refusal` 이 받을 수 없는 결정의 이유를 만들며, `review.py::allowed_decisions` 가 검사 오류가 있으면 approve 를 뺍니다. `app.py::decide` 는 그래프에 닿기 전에 같은 목록으로 422 를 돌려줍니다. 저장소는 `shared/graph/checkpoint.py::thread_store` 가 고르고, `THREAD_DB` 를 주면 파일에 남아 재시작을 넘깁니다.",
+ "failure": "checkpointer 가 프로세스 메모리(InMemorySaver)면 재시작 한 번에 검토 대기 중이던 건이 사라집니다. **기다리라고 해 놓고 잊는 것**이라 운영에서는 DB 에 둡니다(과제 10 은 Postgres). 또 저장소에서 상태를 꺼낼 때 허용할 타입을 정하지 않으면 LangGraph 가 경고하고, 다음 버전부터는 꺼내기를 막습니다.",
+ "app_link": "과제 10 App 의 `review.py::review` 가 같은 다시 묻기 방식으로 멈추고, `review.py::refusal` 이 받을 수 없는 결정의 이유를 만들며, `review.py::allowed_decisions` 가 검사 오류가 있으면 approve 를 뺍니다. `app.py::decide` 는 그래프에 닿기 전에 같은 목록으로 422 를 돌려줍니다. 저장소는 `shared/graph/checkpoint.py::thread_store` 가 매뉴얼·이력과 같은 Postgres 에 열어, 검토 대기 건이 재시작을 넘깁니다.",
  "next": "다음 `12_end_to_end_evaluation.ipynb` 에서는 지금까지의 조각을 한 그래프로 잇고, Agent 바깥의 숫자까지 평가합니다.",
 })
 

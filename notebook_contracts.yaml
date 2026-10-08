@@ -46,7 +46,7 @@ retired_reimplementations:
     use: langchain_mcp_adapters.client.MultiServerMCPClient
     symbols: [EventLoopThread, payload_of]
   - what: Thread 체크포인트 저장소
-    use: langgraph.checkpoint.sqlite.aio.AsyncSqliteSaver
+    use: langgraph.checkpoint.postgres.aio.AsyncPostgresSaver
     symbols: [SqliteThreadStore, JsonPlusSerializerCompat]
 
 notebooks:

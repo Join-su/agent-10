@@ -1,44 +1,36 @@
-"""Postgres(pgvector) 연결. **선택 기능이다.** 기본은 메모리 FAISS 와 SQLite 다.
+"""Postgres 연결. **과제 10 이 쓰는 DB 는 Postgres(pgvector 확장 포함) 하나다.**
 
-    VECTOR_BACKEND=pgvector    매뉴얼 청크 vector 를 pgvector 에서 읽는다
-    HISTORY_BACKEND=postgres   정비 이력을 Postgres 표에서 읽는다
-    DATABASE_URL               둘이 붙을 곳 (postgresql+psycopg://…)
+    매뉴얼 vector     pgvector 표 (langchain_pg_collection · langchain_pg_embedding)
+    정비 이력         maintenance_record · part_usage 표
+    검토 대기 건      LangGraph 저장소 표 (shared/graph/checkpoint.py 가 만든다)
 
-**앱은 읽기만 한다.** 적재는 운영자가 스크립트로 한 번 한다.
+`DATABASE_URL` 하나로 셋 다 붙는다. **앱은 업무 데이터를 읽기만 한다.** 적재는 운영자가
+스크립트로 한 번 한다.
 
-    uv run --env-file .env python scripts/task10/ingest_manuals.py --backend pgvector
+    docker compose up -d db
+    uv run --env-file .env python scripts/task10/ingest_manuals.py
     uv run --env-file .env python scripts/task10/load_history.py
 
 이력 연결은 세션을 읽기 전용 트랜잭션으로 연다(`default_transaction_read_only`).
-SQLite 의 `mode=ro` 와 같은 역할이다. 쓰기 문장은 DB 가 거부한다.
+쓰기 문장은 DB 가 거부한다.
 """
 from __future__ import annotations
 
-import os
-
 from shared.rag.store import database_url
 
-LOAD_COMMANDS = ("uv run --env-file .env python scripts/task10/ingest_manuals.py --backend pgvector",
+LOAD_COMMANDS = ("uv run --env-file .env python scripts/task10/ingest_manuals.py",
                  "uv run --env-file .env python scripts/task10/load_history.py")
 
 
 class PostgresUnavailable(RuntimeError):
-    """Postgres 를 쓰도록 설정했는데 붙을 수 없거나 적재가 안 되어 있다. 운영자가 고칠 수 있는 상태다."""
-
-
-def vector_backend() -> str:
-    return os.getenv("VECTOR_BACKEND", "faiss").strip().lower() or "faiss"
-
-
-def history_backend() -> str:
-    return os.getenv("HISTORY_BACKEND", "sqlite").strip().lower() or "sqlite"
+    """Postgres 에 붙을 수 없거나 적재가 안 되어 있다. 운영자가 고칠 수 있는 상태다."""
 
 
 def required_url() -> str:
     url = database_url()
     if not url:
         raise PostgresUnavailable(
-            "Postgres 를 쓰려면 DATABASE_URL 이 필요합니다. DB 를 먼저 띄우세요: docker compose up -d db")
+            "DATABASE_URL 이 필요합니다. DB 를 먼저 띄우고 적재하세요: docker compose up -d db")
     return url
 
 

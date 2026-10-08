@@ -1,7 +1,7 @@
 """과제 10 — 제조 설비 이상 대응 지원 Agent.
 
-    uv run uvicorn task10_maintenance.app:app --port 8035
-    uv run --env-file .env uvicorn task10_maintenance.app:app --port 8035   # live, THREAD_DB 등
+    uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env
+    (먼저 DB 를 띄우고 적재한다: docker compose up -d db → scripts/task10/ingest_manuals.py → load_history.py)
 
 ML 이 만든 이상 이벤트 카드(EventCard)를 받아, 매뉴얼과 정비 이력에서 근거를 모으고,
 SOP 규칙으로 처리 경로를 정하고, 초안을 쓰고 검사한 뒤 **사람 검토 앞에서 멈춘다.**
@@ -14,7 +14,7 @@ SOP 규칙으로 처리 경로를 정하고, 초안을 쓰고 검사한 뒤 **�
     GET  /evaluate                   대표 사례 경로 검사와 시스템 재현율
 
 앞 STEP 이 만든 것을 그대로 쓴다. 매뉴얼 검색은 `shared/rag`, 이력 조회 Agent 와 MCP 는
-`shared/tools`, 멈춤·재개 저장소는 `shared/graph` 다.
+`shared/tools`, 멈춤·재개 저장소는 `shared/graph` 다. 데이터는 전부 Postgres(pgvector) 하나에 있다.
 
 **이 앱은 설비를 제어하지 않는다.** 보고서까지다.
 """
@@ -30,6 +30,7 @@ from shared.http_errors import register_unavailable
 from shared.rag.embedding import EmbeddingConfigurationError
 from shared.rag.llm import ChatConfigurationError
 from shared.rag.mode import is_live_mode
+from shared.rag.store import database_url
 from shared.tools import McpToolsUnavailable
 from task10_maintenance import evaluation
 from task10_maintenance.domain import CardSummary, CaseRequest, CaseResponse, ReviewDecision
@@ -44,7 +45,7 @@ from task10_maintenance.evidence import (
 )
 from task10_maintenance.evidence import manual_collection
 from task10_maintenance.lookup import FIXTURE_NOTE, STEP_BUDGET, mcp_enabled, tool_source
-from task10_maintenance.postgres import PostgresUnavailable, history_backend, vector_backend
+from task10_maintenance.postgres import PostgresUnavailable
 from task10_maintenance.review import (
     DECISIONS,
     MAX_ATTEMPTS,
@@ -56,20 +57,22 @@ from task10_maintenance.review import (
 from task10_maintenance.tools import READ_ONLY_TOOLS
 
 _GRAPH = None
+_GRAPH_STORE = None
 
 
 async def _graph():
-    """저장소는 프로세스에 하나. 매 요청 새로 열면 앞 요청이 멈춰 둔 건을 못 찾는다."""
-    global _GRAPH
-    if _GRAPH is None:
-        _GRAPH = build_case_graph(await thread_store())
+    """그래프는 저장소마다 한 번 만든다. 저장소(Postgres 연결)는 이벤트 루프마다 하나다."""
+    global _GRAPH, _GRAPH_STORE
+    store = await thread_store()
+    if _GRAPH is None or _GRAPH_STORE is not store:
+        _GRAPH, _GRAPH_STORE = build_case_graph(store), store
     return _GRAPH
 
 
 def reset_graph() -> None:
     """설정을 바꾼 뒤 다시 만들게 한다. Test 용이다."""
-    global _GRAPH
-    _GRAPH = None
+    global _GRAPH, _GRAPH_STORE
+    _GRAPH = _GRAPH_STORE = None
 
 
 def mode() -> str:
@@ -126,8 +129,8 @@ def create_app() -> FastAPI:
             "recorded_namespace": NAMESPACE,
             "retrieval": {"kind": "EnsembleRetriever(의미 검색, BM25)", "weights": list(WEIGHTS),
                           "per_query": PER_QUERY},
-            "vector_backend": vector_backend(),
-            "history_backend": history_backend(),
+            "database": "postgres (pgvector)",
+            "pgvector_collection": manual_collection(),
             "tool_source": tool_source(),
             "tool_choice": "model" if is_live_mode() else "fixture_script",
             "read_only_tools": list(READ_ONLY_TOOLS),
@@ -144,14 +147,12 @@ def create_app() -> FastAPI:
             report["chunks"] = len(load_chunks())
         except FileNotFoundError as error:
             report["chunks_error"] = str(error)
-        if vector_backend() == "pgvector":
-            report["pgvector_collection"] = manual_collection()
         if mcp_enabled():
             from task10_maintenance.lookup import MCP_SERVER_MODULE
 
             report["mcp_server_module"] = MCP_SERVER_MODULE
-        if thread_store_durability() != "file":
-            report["warning"] = "THREAD_DB 가 없어 검토 대기 건이 프로세스와 함께 사라집니다."
+        if not database_url():
+            report["warning"] = "DATABASE_URL 이 없습니다. DB 를 띄우고 적재하세요: docker compose up -d db"
         if not is_live_mode():
             report["note"] = FIXTURE_NOTE
         return report

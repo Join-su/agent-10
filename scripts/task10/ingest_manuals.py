@@ -1,15 +1,15 @@
-"""정비 매뉴얼을 청크로 자르고 벡터 저장소에 담는다.
+"""정비 매뉴얼을 청크로 자르고 Postgres(pgvector)에 담는다. 앱이 읽는 컬렉션이다.
 
-    uv run python scripts/task10/ingest_manuals.py                  # fixture, FAISS
-    uv run python scripts/task10/ingest_manuals.py --backend chroma
-    uv run --env-file .env python scripts/task10/ingest_manuals.py   # live 임베딩
-    uv run --env-file .env python scripts/task10/ingest_manuals.py --backend pgvector   # 앱이 읽을 pgvector 컬렉션
+    docker compose up -d db
+    uv run --env-file .env python scripts/task10/ingest_manuals.py          # 앱이 읽을 pgvector 컬렉션
+    uv run --env-file .env python scripts/task10/ingest_manuals.py --pdf    # PDF 를 자른 청크 파일만 (비교용)
+    uv run python scripts/task10/ingest_manuals.py --chunks-only            # 청크 파일만 (매뉴얼을 고친 뒤 녹화 전에)
 
 만드는 것
-    data/index/manual_chunks.jsonl     청크와 메타데이터 (눈으로 확인하는 용도)
-    data/index/<backend>-<md|pdf>-<mode>-<차원>/ 벡터 저장소 (FAISS 파일 또는 Chroma 폴더)
-    pgvector 는 DB 에 남는다 (DATABASE_URL 필요). 앱이 VECTOR_BACKEND=pgvector 일 때 읽는 컬렉션이다.
+    data/index/manual_chunks.jsonl     청크와 메타데이터 (BM25 와 눈으로 확인하는 용도)
+    pgvector 컬렉션 task10-manuals-<recorded|live>-<차원>   (DATABASE_URL 의 Postgres)
         앱과 **같은 임베딩**(fixture 는 녹화된 실제 임베딩, live 는 OpenAI)으로 적재한다.
+        다시 돌리면 컬렉션을 지우고 새로 만든다(쌓이지 않는다).
 
 자르는 방법
     1. 머리말(#~####)로 먼저 나눈다. 절이 곧 근거의 단위이기 때문이다.
@@ -17,9 +17,8 @@
     3. 청크 앞에 머리말 경로를 붙인다. 예: "[정비 매뉴얼 > 4. 고장 유형별 … > 4.2 열 방산 고장 (HDF) > 4.2.3 점검 절차]"
     4. 청크마다 인용 ID 를 붙인다. 예: "MC01-MM 4.2.3". SOP-EA-01 5.3 이 요구하는 형식이다.
 
-임베딩과 저장소는 v2 의 `shared/rag` 를 그대로 쓴다. fixture 모드의 임베딩은
-결정적 가짜라 **벡터 검색 순위는 의미가 없다.** 같은 질의를 BM25 로도 돌려 보여
-준다. BM25 는 임베딩을 쓰지 않으므로 fixture 에서도 순위가 진짜다.
+`--pdf` 는 PDF 변환본을 잘라 `manual_chunks_pdf.jsonl` 만 쓴다. 절 번호가 사라져 앱의 근거로
+쓰지 않으므로 DB 에는 넣지 않는다(Notebook 02).
 """
 from __future__ import annotations
 
@@ -40,13 +39,12 @@ from langchain_text_splitters import (  # noqa: E402
     RecursiveCharacterTextSplitter,
 )
 
-from shared.rag import embedding_model, embedding_profile, keyword_retriever  # noqa: E402
+from shared.rag import keyword_retriever  # noqa: E402
 from shared.rag.store import build_store  # noqa: E402
 
 MD_DIR = ROOT / "data" / "manuals" / "md"
 PDF_DIR = ROOT / "data" / "manuals" / "pdf"
 INDEX_DIR = ROOT / "data" / "index"
-COLLECTION = "task10-manuals"
 
 HEADERS = [("#", "h1"), ("##", "h2"), ("###", "h3"), ("####", "h4")]
 SECTION_ID = re.compile(r"^(부록\s*[A-Z]|\d+(?:\.\d+)*)\.?\s")
@@ -142,44 +140,22 @@ def chunk_pdfs(paths: list[Path], size: int, overlap: int) -> list[Document]:
     return chunks
 
 
-def store(chunks: list[Document], backend: str, source_format: str):
-    """벡터 저장소에 담는다. FAISS·Chroma 는 폴더에 남기고 pgvector 는 DB 에 남긴다.
+def store(chunks: list[Document]):
+    """앱과 같은 임베딩으로 pgvector 에 담는다. 컬렉션 이름도 앱과 같은 규칙이다."""
+    from task10_maintenance.evidence import embeddings as app_embeddings, manual_collection
 
-    폴더와 컬렉션 이름에 원본 형식(md·pdf)을 넣는다. 한때 넣지 않아 PDF 적재가 md
-    저장소를 덮어썼다.
-    """
-    profile = embedding_profile()
-    target = INDEX_DIR / f"{backend}-{source_format}-{profile['mode']}-{profile['dimensions']}"
-    collection = f"{COLLECTION}-{source_format}"
-    if backend == "chroma":
-        import shutil
-
-        from langchain_chroma import Chroma
-
-        shutil.rmtree(target, ignore_errors=True)       # 다시 만들 때 쌓이지 않게
-        vectors = Chroma(collection_name=collection, embedding_function=embedding_model(),
-                         persist_directory=str(target))
-        vectors.add_documents(chunks, ids=[c.metadata["chunk_id"] for c in chunks])
-        return vectors, target
-    if backend == "pgvector":
-        from task10_maintenance.evidence import embeddings as app_embeddings, manual_collection
-
-        name = manual_collection() + ("-pdf" if source_format == "pdf" else "")
-        vectors = build_store(chunks, backend="pgvector", embeddings=app_embeddings(), collection=name)
-        return vectors, f"pgvector 컬렉션 {name} (DATABASE_URL)"
-    vectors = build_store(chunks, backend=backend, collection=collection)
-    if backend == "faiss":
-        vectors.save_local(str(target))
-        return vectors, target
-    return vectors, "pgvector (DATABASE_URL)"
+    name = manual_collection()
+    vectors = build_store(chunks, backend="pgvector", embeddings=app_embeddings(), collection=name)
+    return vectors, name
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--backend", choices=["faiss", "chroma", "pgvector"], default="faiss")
     parser.add_argument("--chunk-size", type=int, default=600)
     parser.add_argument("--overlap", type=int, default=80)
     parser.add_argument("--pdf", action="store_true", help="md 대신 PDF 변환본을 읽는다 (pypdf 필요)")
+    parser.add_argument("--chunks-only", action="store_true",
+                        help="청크 파일만 쓰고 DB 에는 넣지 않는다 (매뉴얼을 고친 뒤 임베딩을 녹화하기 전에)")
     args = parser.parse_args()
 
     if args.pdf:
@@ -205,21 +181,17 @@ def main() -> None:
           f"표 포함 {sum(c.metadata['has_table'] for c in chunks)}개 · "
           f"절 번호 없음 {sum(not c.metadata['section_id'] for c in chunks)}개")
 
-    vectors, where = store(chunks, args.backend, "pdf" if args.pdf else "md")
-    profile = embedding_profile()
-    if args.backend == "pgvector":
-        # 앱과 같은 임베딩으로 적재했다. fixture 는 녹화본이라 녹화에 없는 확인 질의는 vector 로 못 찾는다.
-        print(f"\n저장소: {where} · 앱과 같은 임베딩 · 청크 {len(chunks)}개")
-        print("vector 확인은 앱의 카드 질의로 합니다(GET /diagnostics, POST /cases).")
+    if args.pdf or args.chunks_only:
+        print("청크 파일만 썼습니다. DB 에는 넣지 않았습니다." + (" (PDF 청크는 비교용)" if args.pdf else ""))
         return
-    print(f"\n저장소: {args.backend} · 임베딩 {profile['model']} ({profile['dimensions']}차원) · {where}")
+    _, name = store(chunks)
+    print(f"\n저장소: Postgres pgvector 컬렉션 {name} · 앱과 같은 임베딩 · 청크 {len(chunks)}개")
 
     bm25 = keyword_retriever(chunks, k=3)
-    note = "" if profile["mode"] == "live" else "  ← fixture: 가짜 임베딩이라 순위 의미 없음"
     for query in SMOKE_QUERIES:
         print(f"\n질의: {query}")
         print("  BM25  :", [d.metadata["citation"] for d in bm25.invoke(query)])
-        print("  vector:", [d.metadata["citation"] for d in vectors.similarity_search(query, k=3)], note)
+    print("\nvector 확인은 앱의 카드 질의로 합니다(GET /diagnostics, POST /cases).")
 
 
 if __name__ == "__main__":

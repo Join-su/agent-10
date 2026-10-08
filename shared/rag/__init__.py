@@ -13,7 +13,6 @@ from shared.rag.retrievers import (
     hybrid_retriever,
     keyword_retriever,
     korean_bigrams,
-    parent_document_retriever,
 )
 from shared.rag.store import (
     backend_availability,
@@ -27,6 +26,6 @@ __all__ = [
     "embedding_model", "embedding_profile",
     "chat_model", "is_live_mode",
     "dense_retriever", "keyword_retriever", "hybrid_retriever",
-    "expanded_retriever", "parent_document_retriever", "korean_bigrams",
+    "expanded_retriever", "korean_bigrams",
     "build_store", "store_backends", "backend_availability", "database_url",
 ]

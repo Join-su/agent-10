@@ -10,6 +10,7 @@ MCP 서버는 **다른 Process** 다. 그래서 같은 저장소 안에 있어�
 """
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Mapping, Sequence
 
@@ -20,15 +21,26 @@ class McpToolsUnavailable(RuntimeError):
     """MCP 서버에서 Tool 을 가져오지 못했다. 고칠 수 있는 상태다."""
 
 
-def stdio_server(module: str, *, python: str | None = None) -> dict[str, object]:
+def stdio_server(module: str, *, python: str | None = None,
+                 pass_env: Sequence[str] = ()) -> dict[str, object]:
     """이 저장소의 모듈을 MCP 서버로 띄우는 설정.
 
     `sys.executable` 을 쓴다. `"python"` 이라고 적으면 가상환경 밖의 해석기가
     잡혀 의존성이 없다는 이유로 서버가 죽는다.
+
+    **서버 Process 는 부모의 환경 변수를 다 물려받지 않는다**(MCP 가 기본 몇 개만 넘긴다).
+    서버의 Tool 이 DB 에 붙어야 하면 그 이름만 `pass_env` 로 넘긴다. API 키처럼 서버가
+    쓰지 않는 값은 넘기지 않는다.
     """
-    return {"command": python or sys.executable,
-            "args": ["-m", module],
-            "transport": "stdio"}
+    config: dict[str, object] = {"command": python or sys.executable,
+                                 "args": ["-m", module],
+                                 "transport": "stdio"}
+    if pass_env:
+        from mcp.client.stdio import get_default_environment
+
+        config["env"] = {**get_default_environment(),
+                         **{name: os.environ[name] for name in pass_env if name in os.environ}}
+    return config
 
 
 async def mcp_tools(servers: Mapping[str, Mapping[str, object]]) -> Sequence[BaseTool]:

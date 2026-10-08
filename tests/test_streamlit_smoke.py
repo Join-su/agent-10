@@ -29,9 +29,9 @@ def _fixture_read(project, path, **kwargs):
 
 
 @pytest.fixture
-def app(monkeypatch):
-    for name in ("VECTOR_BACKEND", "HISTORY_BACKEND", "THREAD_DB", "MCP_MODE"):
-        monkeypatch.delenv(name, raising=False)
+def app(monkeypatch, database):
+    """화면이 부르는 앱은 Postgres 를 쓴다. DB 가 없으면 conftest 의 안내와 함께 실패한다."""
+    monkeypatch.delenv("MCP_MODE", raising=False)
     monkeypatch.setenv("APP_MODE", "fixture")
     with patch("app_pages._common.call", side_effect=_fixture_call), \
          patch("app_pages._common.read", side_effect=_fixture_read):

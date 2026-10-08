@@ -6,14 +6,16 @@ v2 의 원칙대로 **실패할 수 있는 테스트**만 둔다. 판정 기준�
 AI4I 1만 행과의 대조가 깨지고, 경로 규칙을 바꾸면 대표 사례 10건 중 하나가 깨진다.
 
 fixture 에서 진짜인 것: 판정 계산, 이력 SQL, Tool 실행, 매뉴얼 검색 순위(녹화된 실제
-임베딩), 경로, 검사, 멈춤과 재개. 대본인 것: 이력 Agent 가 무엇을 부를지 고르는 것,
+임베딩), 경로, 검사, 멈춤과 재개.
+
+**Postgres 가 필요하다.** 앱의 DB(매뉴얼 vector·정비 이력·검토 대기 건)가 Postgres 하나다.
+DB 가 없으면 이 파일의 Test 는 건너뛰지 않고 무엇을 할지 말하며 실패한다(tests/conftest.py). 대본인 것: 이력 Agent 가 무엇을 부를지 고르는 것,
 초안 문장 두 가지뿐이다.
 """
 from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta
 from itertools import cycle
@@ -55,7 +57,8 @@ from task10_maintenance.evidence import (
     load_chunks,
     recorded_embeddings,
 )
-from task10_maintenance.history import HistoryStore
+from task10_maintenance import postgres
+from task10_maintenance.history import HistoryStore, history_store
 from task10_maintenance.lookup import (
     MCP_SERVER_MODULE,
     STEP_BUDGET,
@@ -76,10 +79,13 @@ ENGINEER = {"reviewer_role": "정비 기술자"}
 SECTION = {"TWF": "MC01-MM 4.1", "HDF": "MC01-MM 4.2", "PWF": "MC01-MM 4.3", "OSF": "MC01-MM 4.4"}
 
 
+pytestmark = pytest.mark.usefixtures("database")
+
+
 @pytest.fixture(autouse=True)
 def fixture_mode(monkeypatch):
     """셸에 live·MCP 설정이 있어도 테스트는 fixture 로 돈다. OpenAI 를 부르지 않는다."""
-    for name in ("APP_MODE", "OPENAI_API_KEY", "MCP_MODE", "THREAD_DB", "VECTOR_BACKEND", "HISTORY_BACKEND"):
+    for name in ("APP_MODE", "OPENAI_API_KEY", "MCP_MODE"):
         monkeypatch.delenv(name, raising=False)
     reset_thread_store()
     app_module.reset_graph()
@@ -99,8 +105,8 @@ def _card(sid_or_event: str) -> EventCard:
 
 
 @pytest.fixture(scope="module")
-def store() -> HistoryStore:
-    return HistoryStore()
+def store(database) -> HistoryStore:
+    return history_store()
 
 
 # =============================================================================
@@ -204,14 +210,23 @@ def test_pdf_chunks_lose_the_section_number():
 # =============================================================================
 
 def test_history_never_returns_records_after_the_event(store):
-    with closing(sqlite3.connect(DATA / "history" / "history.sqlite")) as db:
+    with closing(postgres.connect()) as db:
         for s in scenarios():
             card = EventCard.model_validate(s["card"])
             for item in store.gather(card.sensor_snapshot, card.quality_grade,
                                      card.prediction.predicted_failure_type, card.detected_at):
-                occurred = db.execute("SELECT occurred_at FROM maintenance_record WHERE record_id = ?",
-                                      (item.evidence_id,)).fetchone()[0]
+                occurred = db.execute("SELECT occurred_at FROM maintenance_record WHERE record_id = %s",
+                                      (item.evidence_id,)).fetchone()["occurred_at"]
                 assert occurred < card.detected_at, (card.event_id, item.evidence_id)
+
+
+def test_the_loaded_history_matches_the_jsonl_source():
+    """적재(load_history.py)가 원본 JSONL 을 빠짐없이 옮겼는가."""
+    lines = (DATA / "history" / "maintenance_history.jsonl").read_text(encoding="utf-8").splitlines()
+    parts = sum(len(json.loads(line)["parts_replaced"]) for line in lines)
+    with closing(postgres.connect()) as db:
+        assert db.execute("SELECT count(*) AS n FROM maintenance_record").fetchone()["n"] == len(lines)
+        assert db.execute("SELECT count(*) AS n FROM part_usage").fetchone()["n"] == parts
 
 
 def test_history_gathers_every_kind_the_sop_asks_for(store):
@@ -222,12 +237,14 @@ def test_history_gathers_every_kind_the_sop_asks_for(store):
 
 
 def test_the_history_db_refuses_writes():
-    """쓰기 시도는 DB 헤더 쓰기로 한다. 이 저장소는 코드에 데이터 변경 SQL 문자열이 있으면
-    막는다(tests/test_security_invariants.py). 헤더 쓰기도 읽기 전용 연결에서는 거부된다."""
+    """쓰기 시도는 시퀀스 만들기로 한다. 이 저장소는 코드에 데이터 변경 SQL 문자열이 있으면
+    막는다(tests/test_security_invariants.py). 이것도 읽기 전용 세션에서는 거부된다."""
+    import psycopg
+
     from task10_maintenance.tools import history
-    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+    with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
         with closing(history()._connect()) as db:
-            db.execute("PRAGMA user_version = 7")
+            db.execute("CREATE SEQUENCE task10_probe")
 
 
 # =============================================================================
@@ -292,7 +309,7 @@ def test_the_step_budget_is_reachable(budget, exhausted):
 
 def test_the_mcp_server_opens_exactly_the_read_only_tools():
     """MCP 로 나가는 표면을 **실제로 띄워서** 센다."""
-    tools = asyncio.run(mcp_tools({"history": stdio_server(MCP_SERVER_MODULE)}))
+    tools = asyncio.run(mcp_tools({"history": stdio_server(MCP_SERVER_MODULE, pass_env=("DATABASE_URL",))}))
     assert {t.name for t in tools} == set(READ_ONLY_TOOLS)
     assert set(mcp_server._tool_manager._tools) == set(READ_ONLY_TOOLS)
 
@@ -675,13 +692,12 @@ def test_an_unrecorded_card_is_503_with_the_fix(client):
     assert "APP_MODE=live" in response.json()["message"]
 
 
-def test_a_paused_case_survives_a_restart(monkeypatch, tmp_path):
-    """파일 저장소는 비동기 연결이라 연 이벤트 루프에 묶인다. `with TestClient` 로 클라이언트
-    하나의 요청들이 한 루프에서 돌게 한다(uvicorn 처럼)."""
-    monkeypatch.setenv("THREAD_DB", str(tmp_path / "threads.sqlite"))
+def test_a_paused_case_survives_a_restart():
+    """검토 대기 건은 Postgres 에 남는다. 저장소와 그래프를 버리고 새로 열어도 이어 간다.
+    `with TestClient` 로 클라이언트 하나의 요청들이 한 루프에서 돌게 한다(uvicorn 처럼)."""
     with TestClient(create_app()) as first:
         case = _start(first, "EVT-2025-0106")
-        assert case["thread_durability"] == "file"
+        assert case["thread_durability"] == "postgres"
 
     reset_thread_store()                 # 재시작을 흉내 낸다: 저장소와 그래프를 버리고 새로 연다
     app_module.reset_graph()
@@ -710,81 +726,20 @@ def test_diagnostics_never_returns_a_key(client, monkeypatch):
 
 
 # =============================================================================
-# Postgres (선택) — DATABASE_URL 로 닿고 적재가 되어 있을 때만 돈다
+# Postgres — 앱의 유일한 DB
 # =============================================================================
 
-def _postgres_ready() -> str | None:
-    """돌 수 없으면 이유를, 돌 수 있으면 None 을 돌려준다."""
-    import os
-
-    if not os.getenv("DATABASE_URL", "").strip():
-        return "DATABASE_URL 이 없다. docker compose up -d db 와 적재 스크립트 두 개를 돌리면 함께 돈다."
-    from task10_maintenance import postgres
-    try:
-        with closing(postgres.connect()) as db:
-            db.execute("SELECT count(*) FROM maintenance_record").fetchone()
-            db.execute("SELECT count(*) FROM langchain_pg_embedding").fetchone()
-    except Exception as error:   # noqa: BLE001 - 어떤 이유든 이 환경에서는 건너뛴다
-        return f"Postgres 에 닿지 않거나 적재 전이다: {type(error).__name__}"
-    return None
+def test_the_pgvector_collection_holds_every_chunk():
+    """적재(ingest_manuals.py)가 청크를 빠짐없이 같은 임베딩 컬렉션에 넣었는가."""
+    from task10_maintenance.evidence import manual_collection
+    with closing(postgres.connect()) as db:
+        n = db.execute("SELECT count(*) AS n FROM langchain_pg_embedding e JOIN langchain_pg_collection c "
+                       "ON e.collection_id = c.uuid WHERE c.name = %s", (manual_collection(),)).fetchone()["n"]
+    assert n == len(load_chunks())
 
 
-needs_postgres = pytest.mark.skipif(_postgres_ready() is not None, reason=str(_postgres_ready()))
-
-
-@pytest.fixture
-def on_postgres(monkeypatch):
-    from task10_maintenance.evaluation import evaluate
-    from task10_maintenance.evidence import hybrid
-    from task10_maintenance.history import _store
-
-    monkeypatch.setenv("VECTOR_BACKEND", "pgvector")
-    monkeypatch.setenv("HISTORY_BACKEND", "postgres")
-    for cached in (hybrid, _store, evaluate):
-        cached.cache_clear()
-    yield
-    for cached in (hybrid, _store, evaluate):
-        cached.cache_clear()
-
-
-@needs_postgres
-def test_postgres_history_gives_the_same_records_as_sqlite(store, on_postgres):
-    from task10_maintenance.history import history_store
-    remote = history_store()
-    assert remote.backend == "postgres"
-    for s in scenarios():
-        card = EventCard.model_validate(s["card"])
-        args = (card.sensor_snapshot, card.quality_grade, card.prediction.predicted_failure_type, card.detected_at)
-        assert [e.evidence_id for e in remote.gather(*args)] == [e.evidence_id for e in store.gather(*args)], card.event_id
-
-
-@needs_postgres
-def test_the_postgres_history_session_refuses_writes(on_postgres):
-    """쓰기 시도는 시퀀스 만들기로 한다(데이터 변경 SQL 문자열은 이 저장소가 막는다)."""
-    import psycopg
-
-    from task10_maintenance import postgres
-    with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
-        with closing(postgres.connect()) as db:
-            db.execute("CREATE SEQUENCE task10_probe")
-
-
-@needs_postgres
-def test_pgvector_finds_the_same_sections_as_faiss(on_postgres, monkeypatch):
-    """같은 녹화 임베딩이다. 절의 집합은 같아야 한다. 순서는 거리 함수(L2·코사인) 차이로 바뀔 수 있다."""
-    remote = {s["event_id"]: {e.evidence_id for e in find_evidence(EventCard.model_validate(s["card"]))[1]}
-              for s in scenarios()}
-    monkeypatch.setenv("VECTOR_BACKEND", "faiss")
-    local = {s["event_id"]: {e.evidence_id for e in find_evidence(EventCard.model_validate(s["card"]))[1]}
-             for s in scenarios()}
-    assert remote == local
-
-
-@needs_postgres
-def test_the_app_runs_end_to_end_on_postgres(on_postgres):
-    client = TestClient(create_app())
-    diagnostics = client.get("/diagnostics").json()
-    assert (diagnostics["vector_backend"], diagnostics["history_backend"]) == ("pgvector", "postgres")
-    case = _start(client, "EVT-2025-0034")
-    assert _decide(client, case["case_id"], "approve").json()["status"] == "reported"
-    assert client.get("/evaluate").json()["system"]["system_recall"] == 0.747
+def test_diagnostics_names_the_single_database(client):
+    body = client.get("/diagnostics").json()
+    assert body["database"] == "postgres (pgvector)"
+    assert body["thread_durability"] == "postgres"
+    assert body["pgvector_collection"] == "task10-manuals-recorded-256"

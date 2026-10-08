@@ -21,7 +21,7 @@ from pathlib import Path
 from task10_maintenance.criteria import check_criteria
 from task10_maintenance.domain import CompletedRepair, EventCard
 from task10_maintenance.evidence import embedding_source, find_evidence, load_cards
-from task10_maintenance.postgres import vector_backend
+from task10_maintenance.postgres import required_url
 from task10_maintenance.routing import decide_route
 
 DATA = Path(__file__).resolve().parent / "data"
@@ -49,7 +49,7 @@ def route_for(card: EventCard, completed_repairs: list[CompletedRepair] | None =
 @lru_cache(maxsize=2)
 def evaluate(source: str | None = None) -> dict:
     """데이터가 바뀌지 않으므로 임베딩 출처·저장소마다 한 번만 잰다."""
-    del source   # 캐시 열쇠로만 쓴다. 녹화본과 live, 메모리와 pgvector 의 결과를 섞지 않는다
+    del source   # 캐시 열쇠로만 쓴다. 녹화본과 live, 서로 다른 DB 의 결과를 섞지 않는다
     checked = []
     for s in scenarios():
         card = EventCard.model_validate(s["card"])
@@ -89,4 +89,4 @@ def evaluate(source: str | None = None) -> dict:
 
 
 def current() -> dict:
-    return evaluate(f"{embedding_source()}-{vector_backend()}")
+    return evaluate(f"{embedding_source()}-{required_url()}")

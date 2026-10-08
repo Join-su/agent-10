@@ -14,7 +14,7 @@
 예측은 OSF 인데 판정 기준은 TWF 가 성립하는 카드(S08)에서, 첫 턴에 예측 유형
 이력만 찾고 끝내면 TWF 이력을 놓친다.
 
-전부 **읽기 전용**이다. 이력 DB 는 읽기 전용으로 열린다(`mode=ro`).
+전부 **읽기 전용**이다. 이력 DB(Postgres)는 읽기 전용 세션으로 열린다.
 결과는 JSON 문자열이다. 안에서 부르든 MCP 로 부르든 같은 모양이어야 한다.
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ FailureType = Literal["TWF", "HDF", "PWF", "OSF"]
 
 
 def history() -> HistoryStore:
-    """설정(HISTORY_BACKEND)에 맞는 이력 저장소. SQLite 가 기본, Postgres 는 선택이다."""
+    """정비 이력 저장소(Postgres, 읽기 전용 세션)."""
     return history_store()
 
 

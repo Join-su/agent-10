@@ -8,6 +8,24 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    # 앱의 DB 는 Postgres(pgvector) 하나다. CI 도 같은 이미지로 띄운다.
+    services:
+      db:
+        image: pgvector/pgvector:0.8.6-pg16-bookworm
+        env:
+          POSTGRES_DB: task10
+          POSTGRES_USER: task10
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U task10 -d task10"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+
+    env:
+      APP_MODE: fixture
+      DATABASE_URL: postgresql+psycopg://task10:ci-only-password@127.0.0.1:5434/task10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +41,13 @@ jobs:
       - name: Source compiles
         run: uv run python -m compileall -q shared task10_maintenance app_pages streamlit_app.py scripts
 
-      # 정본 계약·과제 10 Test·Notebook 구조와 실행을 한 번에 검증한다(fixture, DB 없음).
+      # 문서에 적힌 순서 그대로 적재한다. 녹화된 임베딩이라 키가 필요 없다.
+      - name: Load the database
+        run: |
+          uv run python scripts/task10/ingest_manuals.py
+          uv run python scripts/task10/load_history.py
+
+      # 정본 계약·과제 10 Test·Notebook 구조와 실행을 한 번에 검증한다.
       - name: Contract, unit and notebook tests
         run: uv run pytest -q
 

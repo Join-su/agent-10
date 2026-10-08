@@ -59,7 +59,7 @@ def test_a_bad_dimension_is_refused_at_read_time(monkeypatch, value):
         embedding_profile()
 
 
-@pytest.mark.parametrize("backend", ["chroma", "faiss"])
+@pytest.mark.parametrize("backend", ["faiss"])
 def test_both_backends_answer_through_the_same_chain(manual_documents, backend, monkeypatch):
     """벡터 DB 를 바꿔도 조립하는 쪽 코드는 바뀌지 않아야 비교가 된다.
 
@@ -81,7 +81,7 @@ def test_an_unknown_backend_is_named_not_guessed():
 
     with pytest.raises(StoreConfigurationError) as refused:
         build_store([Document(page_content="x")], backend="pinecone")
-    assert "chroma" in str(refused.value) and "faiss" in str(refused.value)
+    assert "pgvector" in str(refused.value) and "faiss" in str(refused.value)
 
 
 def test_an_empty_corpus_is_refused():
@@ -89,7 +89,7 @@ def test_an_empty_corpus_is_refused():
     from shared.rag.store import StoreConfigurationError
 
     with pytest.raises(StoreConfigurationError):
-        build_store([], backend="chroma")
+        build_store([], backend="faiss")
 
 
 def test_the_context_carries_where_each_piece_came_from(manual_documents):
@@ -107,7 +107,7 @@ def test_the_chain_is_assembled_not_hand_sequenced(manual_documents):
     순서를 손으로 짜면 그것은 LCEL 이 아니라 그냥 함수 호출이다. STEP 03 이
     가르치는 것은 이어 붙이는 방식 자체다.
     """
-    store = build_store(manual_documents, backend="chroma")
+    store = build_store(manual_documents, backend="faiss")
     chain = answer_chain(store.as_retriever(search_kwargs={"k": 1}), chat_model("답"))
 
     assert type(chain).__name__ == "RunnableSequence", f"{type(chain).__name__} 이다"
@@ -142,7 +142,7 @@ def test_what_can_be_chosen_and_what_works_now_are_different(monkeypatch):
     """목록에 있다는 이유로 쓸 수 있다고 말하면 고른 뒤에야 안 된다는 것을 안다."""
     monkeypatch.delenv("DATABASE_URL", raising=False)
     assert backend_availability()["pgvector"] is False
-    assert backend_availability()["chroma"] is True
+    assert backend_availability()["faiss"] is True
 
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@127.0.0.1:5433/db")
     assert backend_availability()["pgvector"] is True
@@ -171,7 +171,7 @@ def test_an_unreachable_database_is_reported_as_configuration_not_a_crash(monkey
 def test_only_pgvector_outlives_the_process():
     """이것이 "벡터 DB 를 고른다"는 말의 실체다.
 
-    Chroma·FAISS 는 프로세스 메모리에 있어 다시 만들면 비어 있다. pgvector 는
+    FAISS 는 프로세스 메모리에 있어 다시 만들면 비어 있다. pgvector 는
     새 객체로 붙어도 앞서 적재한 것이 그대로 있다.
     """
     from langchain_postgres import PGVector
@@ -189,5 +189,5 @@ def test_only_pgvector_outlives_the_process():
     assert [d.metadata["evidence_id"] for d in found] == ["AUTO-2026#제12조"]
 
     # 메모리 백엔드는 새로 만들면 비어 있다. 그 차이를 함께 보여 둔다.
-    assert build_store(documents, backend="chroma",
+    assert build_store(documents, backend="faiss",
                        collection=PGVECTOR_COLLECTION) is not None

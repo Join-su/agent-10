@@ -14,11 +14,17 @@ ML 이상 이벤트 카드(EventCard)
 
 ```bash
 uv sync --frozen
-uv run python -m pytest task10_maintenance/tests -q                  # 과제 10 Test
-uv run jupyter lab task10_maintenance/notebooks                      # Notebook 01 부터
+cp .env.example .env
+uv run jupyter lab task10_maintenance/notebooks                      # Notebook 01 부터 (DB 필요 없음)
+
+docker compose --env-file .env up -d db                              # DB: Postgres + pgvector 하나
+uv run --env-file .env python scripts/task10/ingest_manuals.py       # 매뉴얼 → pgvector (한 번)
+uv run --env-file .env python scripts/task10/load_history.py         # 정비 이력 → Postgres 표 (한 번)
 uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env
 uv run streamlit run streamlit_app.py                                # 화면: 메뉴의 '과제 10 · 설비 이상 대응'
-docker compose --env-file .env up -d --build                         # 또는 컨테이너로 한 번에 (Postgres·API 8035·화면 8501)
+uv run pytest -q                                                     # Test (DB 필요)
+
+docker compose --env-file .env up -d --build                         # 또는 컨테이너로 한 번에 (DB·적재·API·화면)
 ```
 
 권하는 순서: **Notebook 01~12 → 앱 코드(`review.py` 의 그래프 그림부터) → 화면에서 대표 사례 S01~S10 처리.** Notebook 끝의 "실제 app 연결"이 앱의 어느 코드가 같은 기법을 쓰는지 알려 줍니다.
@@ -28,8 +34,8 @@ docker compose --env-file .env up -d --build                         # 또는 �
 | 기본(키 없음) | 판정·경로·이력·검사·멈춤 전부 진짜. 매뉴얼 의미 검색은 **녹화된 실제 임베딩**이라 순위도 진짜. 이력 Agent 가 무엇을 부를지 고르는 것과 초안 문장만 정해진 규칙(`drafted_by = fixture_script`) |
 | `APP_MODE=live` | 임베딩·Tool 선택·초안 문장을 실제 OpenAI 가 맡는다 (비용 발생) |
 | `MCP_MODE=on` | 정비 이력 Tool 을 별도 Process(MCP 서버)에서 가져온다 |
-| `THREAD_DB=경로` | 검토 대기 건이 서버 재시작을 넘긴다 (compose 는 기본으로 켠다) |
-| `VECTOR_BACKEND=pgvector`, `HISTORY_BACKEND=postgres` | 매뉴얼 vector 와 정비 이력을 Postgres 에서 읽는다 (선택, compose 는 기본으로 켠다). 적재는 `scripts/task10/ingest_manuals.py --backend pgvector`, `scripts/task10/load_history.py` |
+
+**DB 는 Postgres(pgvector 확장 포함) 하나입니다.** 매뉴얼 vector, 정비 이력, 검토 대기 건이 모두 같은 DB(`DATABASE_URL`)에 있고, 서버를 재시작해도 남습니다. 앱은 업무 데이터를 읽기만 하고, 적재는 스크립트 두 개가 한 번 합니다.
 
 > 모든 데이터는 UCI AI4I 2020(CC BY 4.0)에서 파생한 **합성 데이터**입니다. 매뉴얼과 정비 이력은 학습용으로 만든 것이며 실제 설비의 절차나 기록이 아닙니다. ML 단계는 학습 범위 밖이고, Agent 는 **ML 을 거쳐 이미 만들어진 EventCard** 를 입력으로 받습니다.
 
@@ -41,7 +47,7 @@ docker compose --env-file .env up -d --build                         # 또는 �
 |---|---|---|---|---|
 | 01 | `01_eventcard_and_criteria` | Pydantic 계약, ML 예측과 판정 기준 대조 | `domain.py`, `criteria.py` | — |
 | 02 | `02_section_chunking` | MarkdownHeaderTextSplitter, 머리말 경로, 절 번호 인용, PDF 구조 손실 | `scripts/task10/ingest_manuals.py` | 03 |
-| 03 | `03_recorded_embeddings` | 임베딩·FAISS, CacheBackedEmbeddings 녹화와 재생 | `evidence.py` | 03 |
+| 03 | `03_recorded_embeddings` | 임베딩·벡터 저장소, CacheBackedEmbeddings 녹화와 재생 | `evidence.py` | 03 |
 | 04 | `04_hybrid_search` | 카드 → 질의, BM25 + 의미 검색, EnsembleRetriever | `evidence.py` | 04 |
 | 05 | `05_history_tool` | `@tool`, Literal enum, 시점 경계, 읽기 전용 DB | `tools.py`, `history.py` | 05 |
 | 06 | `06_lookup_agent` | `create_agent`, 호출 상한, 실행 기록 감사 | `lookup.py` | 05 |
@@ -64,11 +70,11 @@ uv run python scripts/build_notebooks.py
 |---|---|
 | `app.py` | FastAPI. 아래 endpoint |
 | `review.py` | **본체 그래프**: 병렬 수집 → merge → 경로 → 초안·검사 루프 → 검토 멈춤 → 보고서 |
-| `evidence.py` | 매뉴얼 근거: 카드 → 질의, 녹화 임베딩 vector(FAISS 또는 pgvector) + BM25 하이브리드, 절 번호로 바로 꺼내기 |
+| `evidence.py` | 매뉴얼 근거: 카드 → 질의, pgvector(녹화 임베딩으로 적재) + BM25 하이브리드, 절 번호로 바로 꺼내기 |
 | `lookup.py` | 이력 담당 Agent: fixture 대본, 실행 기록 감사(의존 순서·빠진 유형), MCP 경로 |
 | `tools.py` · `mcp_server.py` | 읽기 전용 Tool 4개와 그것을 여는 MCP 서버 |
-| `criteria.py` · `history.py` | 판정 기준 계산, 정비 이력 조회(조회마다 읽기 전용 연결, SQLite 또는 Postgres) |
-| `postgres.py` | Postgres 선택 기능: 설정 읽기와 읽기 전용 연결 |
+| `criteria.py` · `history.py` | 판정 기준 계산, 정비 이력 조회(Postgres, 조회마다 읽기 전용 세션) |
+| `postgres.py` | DB 연결: `DATABASE_URL`, 읽기 전용 세션, 적재 안내 |
 | `routing.py` | 처리 경로(SOP-EA-01 6·9장), 준비 부품, 초안 검사 |
 | `drafting.py` | 초안 프롬프트와 파서. **LLM 이 하는 유일한 일** |
 | `report.py` | 검토 결과로 보고서 만들기 |
@@ -114,7 +120,7 @@ curl -s -X POST localhost:8035/cases/<case_id>/decision -H 'content-type: applic
 | `docs/curriculum-plan.md` | 확정한 결정과 실측 기록 | — |
 | `data/eventcards/eventcards.jsonl` | 이상 이벤트 111장 | **예 (입력)** |
 | `data/eventcards/scenarios.jsonl` | 경로별 대표 사례 10건 (카드 + 맥락) | **예 (입력)** |
-| `data/history/` | MC-01 정비 이력 410건 (JSONL·SQLite) | **예 (근거)** |
+| `data/history/maintenance_history.jsonl` | MC-01 정비 이력 410건 원본. `load_history.py` 가 Postgres 표로 적재 | **예 (근거)** |
 | `data/manuals/md/` · `pdf/` | 매뉴얼 3종 정본과 PDF 변환본 | **예 (근거)** |
 | `data/index/manual_chunks.jsonl` | 청크 69개와 메타데이터 | **예 (근거)** |
 | `data/index/recorded_embeddings/` | 녹화된 실제 임베딩 | — |
@@ -165,7 +171,7 @@ ML이 고장 가능성을 감지했을 때 만드는 카드입니다. **정답(�
 | `tool_change` | 84 | 공구 교체. 이력 기간 48건 + 운영 기간 36건(운영 기간에는 이 기록만 있고 교체 사유는 적지 않음) |
 
 - 증상·진단·조치·교체 부품·정지 시간·매뉴얼 참조(`MC01-MM 4.2.3` 등)가 있습니다. 진단 문장의 수치는 매뉴얼 판정 기준과 맞춰져 있습니다.
-- SQLite에는 `maintenance_record`와 `part_usage` 두 표가 있습니다.
+- 원본은 JSONL 이고, Postgres 에는 `maintenance_record`와 `part_usage` 두 표로 펼쳐 적재합니다(`scripts/task10/load_history.py`).
 
 ```sql
 -- 같은 유형의 최근 기록 3건 (SOP-EA-01 5.2의 1번 근거)
@@ -225,21 +231,21 @@ uv run python scripts/task10/build_dataset.py                                # �
 # 2. PDF 변환본 (pandoc + Chrome 필요)
 uv run python scripts/task10/build_manual_pdfs.py
 
-# 3. 청크 → 임베딩 녹화 (녹화는 OpenAI 비용 발생, 매우 적음)
-uv run python scripts/task10/ingest_manuals.py
+# 3. 청크 → 임베딩 녹화 → DB 적재 (녹화는 OpenAI 비용 발생, 매우 적음)
+uv run python scripts/task10/ingest_manuals.py --chunks-only
 uv run --env-file .env python scripts/task10/record_embeddings.py
+uv run --env-file .env python scripts/task10/ingest_manuals.py
+uv run --env-file .env python scripts/task10/load_history.py
 ```
 
 ## 청크화와 저장소 적재
 
 ```bash
-uv run python scripts/task10/ingest_manuals.py                    # fixture, FAISS (기본)
-uv run python scripts/task10/ingest_manuals.py --backend chroma
-uv run --env-file .env python scripts/task10/ingest_manuals.py    # live 임베딩 (OpenAI 비용 발생)
-uv run --env-file .env python scripts/task10/ingest_manuals.py --backend pgvector   # DB 필요
+uv run --env-file .env python scripts/task10/ingest_manuals.py    # fixture: 녹화 임베딩, live: OpenAI 임베딩 (비용 발생)
+uv run --env-file .env python scripts/task10/ingest_manuals.py --pdf   # PDF 를 자른 청크 파일만 (비교용)
 ```
 
 - 머리말(#~####)로 먼저 나누고, 긴 절만 600자(겹침 80자)로 다시 자릅니다. 청크 앞에 머리말 경로를 붙이고, 청크마다 `citation`(예: `MC01-MM 4.2.3`)이 붙습니다.
 - 매뉴얼을 고치면 PDF 와 청크를 다시 만들고 임베딩을 다시 녹화합니다(`build_manual_pdfs.py` → `ingest_manuals.py` → `record_embeddings.py`).
-- 벡터 저장소는 `data/index/<backend>-<md|pdf>-<mode>-<차원>/` 에 생깁니다. git 에는 올리지 않습니다. 앱은 이것을 쓰지 않고 시작할 때 녹화 임베딩으로 FAISS 를 메모리에 만듭니다.
+- 벡터는 Postgres 의 pgvector 컬렉션 `task10-manuals-<recorded|live>-<차원>` 에 들어갑니다. 다시 돌리면 지우고 새로 만듭니다(쌓이지 않음). 앱은 이 컬렉션을 읽기만 합니다.
 - `--pdf` 는 PDF 변환본을 읽습니다(`manual_chunks_pdf.jsonl`, 33개). 표의 열 구분과 절 번호가 사라져 인용이 쪽 단위(`MC01-MM p.8`)로만 됩니다. md 를 정본으로 둔 이유입니다(Notebook 02).

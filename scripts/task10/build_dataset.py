@@ -9,7 +9,7 @@
     data/eventcards/eventcards.jsonl  ML 이 만든 이상 이벤트 — Agent 의 입력
     data/eventcards/scenarios.jsonl   경로별 대표 사례 10건 (build_scenarios.py)
     data/eval/                        정답·놓친 고장·사례 기대 경로 — 평가 전용, Agent 에게 주지 않는다
-    data/history/                     MC-01 정비 이력 (JSONL·SQLite)
+    data/history/                     MC-01 정비 이력 (JSONL. Postgres 적재는 load_history.py)
     data/model/model_card.json        모델 계수·임계값·검증 지표
     data/manuals/md/ML-GUIDE-01.md    모델 해석 안내서 (검증 지표를 채워 생성)
     schemas/*.json                    domain.py 에서 생성한 JSON Schema
@@ -25,7 +25,6 @@ import argparse
 import hashlib
 import json
 import shutil
-import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -506,35 +505,6 @@ def dedupe(items: list) -> list:
     return out
 
 
-def write_sqlite(path: Path, records: list[MaintenanceRecord]) -> None:
-    """이력을 SQL 로 조회할 수 있게 둔다. 부품 사용은 별도 표로 나눈다."""
-    path.unlink(missing_ok=True)
-    with sqlite3.connect(path) as db:
-        db.execute("""CREATE TABLE maintenance_record (
-            record_id TEXT PRIMARY KEY, equipment_id TEXT, occurred_at TEXT, record_type TEXT,
-            trigger TEXT, past_alarm_type TEXT, past_alarm_probability REAL, failure_types TEXT,
-            quality_grade TEXT, air_temperature_k REAL, process_temperature_k REAL,
-            rotational_speed_rpm REAL, torque_nm REAL, tool_wear_min REAL, temp_diff_k REAL,
-            power_w REAL, symptom TEXT, diagnosis TEXT, action TEXT, downtime_min INTEGER,
-            outcome TEXT, manual_refs TEXT, technician TEXT, source_row_id TEXT)""")
-        db.execute("""CREATE TABLE part_usage (
-            record_id TEXT REFERENCES maintenance_record(record_id), part_no TEXT, name TEXT,
-            qty INTEGER)""")
-        for r in records:
-            s = r.sensor_snapshot
-            db.execute("INSERT INTO maintenance_record VALUES (" + ",".join("?" * 24) + ")", (
-                r.record_id, r.equipment_id, r.occurred_at, r.record_type, r.trigger,
-                r.past_alarm.predicted_failure_type if r.past_alarm else None,
-                r.past_alarm.probability if r.past_alarm else None, ",".join(r.failure_types),
-                r.quality_grade, s.air_temperature_k, s.process_temperature_k,
-                s.rotational_speed_rpm, s.torque_nm, s.tool_wear_min, s.temp_diff_k, s.power_w,
-                r.symptom, r.diagnosis, r.action, r.downtime_min, r.outcome,
-                json.dumps(r.manual_refs, ensure_ascii=False), r.technician, r.source["row_id"]))
-            for pu in r.parts_replaced:
-                db.execute("INSERT INTO part_usage VALUES (?,?,?,?)",
-                           (r.record_id, pu.part_no, pu.name, pu.qty))
-
-
 # --- 대표 사례와 안내서 ---------------------------------------------------------
 
 def write_guide(path: Path, metrics: dict, history: pd.DataFrame, operation_start: str) -> None:
@@ -593,7 +563,6 @@ def main() -> None:
     write_jsonl(data / "eval" / "event_truth.jsonl", truths)
     write_jsonl(data / "eval" / "missed_failures.jsonl", missed)
     write_jsonl(data / "history" / "maintenance_history.jsonl", records)
-    write_sqlite(data / "history" / "history.sqlite", records)
 
     (data / "model").mkdir(parents=True, exist_ok=True)
     (data / "model" / "model_card.json").write_text(json.dumps({
