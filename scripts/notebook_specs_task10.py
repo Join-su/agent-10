@@ -819,14 +819,18 @@ print("서버 파일:", practice_server_path.name, "· 정의된 함수 2개, �
 # 세션과 전송을 직접 만들지 않습니다.
 # MCP Tool 은 비동기 전용입니다. Jupyter 는 이미 이벤트 루프가 돌고 있어 asyncio.run 을 바로 쓸 수 없으므로,
 # 별도 스레드에서 돌립니다(Jupyter 와 일반 Python 양쪽에서 같은 코드가 돕니다).
+# Windows 에서 하위 Process(MCP 서버)를 띄우려면 Proactor 루프가 필요해 루프를 직접 고릅니다.
 # 관찰 포인트: 받아 온 것은 StructuredTool 이고, Literal 인자는 서버를 건너와도 enum 으로 남습니다.
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+def practice_new_loop():
+    return asyncio.ProactorEventLoop() if sys.platform == "win32" else asyncio.SelectorEventLoop()
+
 def practice_wait(coroutine):
     with ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coroutine).result()
+        return pool.submit(asyncio.run, coroutine, loop_factory=practice_new_loop).result()
 
 practice_servers = {"history": {"command": sys.executable, "args": [str(practice_server_path)], "transport": "stdio"}}
 
@@ -1457,7 +1461,7 @@ assert round(practice_system_recall, 3) == 0.667, "경보가 없던 고장을 �
    "Agent 만 보면 재현율 100% 이지만, 경보 없이 지나간 고장 2건을 넣으면 시스템 재현율은 66.7% 입니다. 나머지는 Agent 가 아무리 잘해도 볼 수 없었던 고장이고, 그 한계는 ML 의 경보 기준이 정합니다. **Agent 만 평가하면 이 차이가 보이지 않습니다.**"),
  ],
  "exercise": {
-  "intro": "실제 앱의 평가를 돌려 보세요. 터미널에서 앱을 띄운 뒤(`uv run uvicorn task10_maintenance.app:app --port 8035`) 브라우저로 `http://127.0.0.1:8035/evaluate` 를 열거나, 화면(Streamlit)의 '평가' 탭에서 \"평가 실행\"을 누릅니다. 아래 셀에 그 숫자를 적고, 연습 숫자와 비교해 보세요. 경로별 오탐은 어디에 몰려 있습니까? 놓친 고장은 어떤 유형이 많습니까?",
+  "intro": "실제 앱의 평가를 돌려 보세요. DB 를 띄우고 적재한 뒤 앱을 띄우고(`uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env --loop task10_maintenance.loop:selector_loop_factory`) 브라우저로 `http://127.0.0.1:8035/evaluate` 를 열거나, 화면(Streamlit)의 '평가' 탭에서 \"평가 실행\"을 누릅니다. 아래 셀에 그 숫자를 적고, 연습 숫자와 비교해 보세요. 경로별 오탐은 어디에 몰려 있습니까? 놓친 고장은 어떤 유형이 많습니까?",
   "code": '''# 실제 앱 /evaluate 의 숫자를 적습니다(앱을 띄우지 않았으면 None 으로 둡니다).
 # 연습 데이터의 숫자와 나란히 놓고 차이를 읽어 보세요.
 practice_try_app_recall = None   # 예: 0.747

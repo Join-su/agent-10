@@ -12,15 +12,17 @@ fixture 대본은 무엇을 부를지만 정한다. Tool 은 진짜로 실행된
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import sys
 from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage
 from langchain_core.tools import BaseTool
 
 from shared.rag.mode import is_live_mode
-from shared.tools import agent_model, arun_agent, as_data, build_agent, mcp_tools, stdio_server
+from shared.tools import McpToolsUnavailable, agent_model, arun_agent, as_data, build_agent, mcp_tools, stdio_server
 from shared.tools.agent import AgentRun
 from task10_maintenance.domain import CriterionResult, EventCard, EvidenceItem
 from task10_maintenance.criteria import check_criteria, met_types
@@ -53,8 +55,18 @@ def tool_source() -> str:
     return "mcp" if mcp_enabled() else "local"
 
 
+def _windows_selector_loop() -> bool:
+    """Windows 에서 SelectorEventLoop 로 돌고 있는가. 그 루프는 하위 Process 를 띄우지 못한다."""
+    return sys.platform == "win32" and isinstance(asyncio.get_running_loop(), asyncio.SelectorEventLoop)
+
+
 async def lookup_tools() -> list[BaseTool]:
     """같은 Tool 을 안에서 얻거나 별도 Process(MCP)에서 얻는다. Agent 쪽 코드는 모른다."""
+    if mcp_enabled() and _windows_selector_loop():
+        # Postgres 비동기 연결 때문에 Windows 에서는 이 루프로 띄운다(loop.py). 대신 MCP 서버 Process 를 못 띄운다.
+        raise McpToolsUnavailable(
+            "Windows 로컬 실행에서는 MCP_MODE=on 을 쓸 수 없습니다(SelectorEventLoop 는 하위 Process 를 "
+            "띄우지 못합니다). .env 에서 MCP_MODE=off 로 두거나 Docker 로 실행하세요: docker compose up -d --build")
     if mcp_enabled():
         # 서버의 Tool 이 정비 이력(Postgres)을 읽으므로 DB 주소만 넘긴다.
         return list(await mcp_tools({"history": stdio_server(MCP_SERVER_MODULE, pass_env=("DATABASE_URL",))}))

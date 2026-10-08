@@ -1,12 +1,24 @@
 """저장소 전체에 적용되는 Test 설정. 앱 Test 가 쓰는 Postgres 확인이 여기 있다."""
 from __future__ import annotations
 
+import asyncio
 import os
+import sys
+import warnings
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parent
+
+# --- Windows 이벤트 루프 ---------------------------------------------------------
+# 앱의 검토 대기 건 저장소는 psycopg 비동기 연결이라 Windows 기본 루프(Proactor)를 거부한다.
+# 앱은 uvicorn --loop task10_maintenance.loop:selector_loop_factory 로 띄운다. Test 가 만드는 루프
+# (TestClient 등)도 같은 루프여야 한다. MCP 서버를 띄우는 Test 는 loop.subprocess_loop 를 직접 쓴다.
+if sys.platform == "win32":
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 # --- Postgres -----------------------------------------------------------------

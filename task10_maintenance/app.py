@@ -1,6 +1,6 @@
 """과제 10 — 제조 설비 이상 대응 지원 Agent.
 
-    uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env
+    uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env --loop task10_maintenance.loop:selector_loop_factory
     (먼저 DB 를 띄우고 적재한다: docker compose up -d db → scripts/task10/ingest_manuals.py → load_history.py)
 
 ML 이 만든 이상 이벤트 카드(EventCard)를 받아, 매뉴얼과 정비 이력에서 근거를 모으고,

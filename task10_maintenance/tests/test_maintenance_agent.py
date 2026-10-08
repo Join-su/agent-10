@@ -31,7 +31,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from shared.graph.checkpoint import reset_thread_store
-from shared.tools import ScriptedToolModel, build_agent, mcp_tools, stdio_server
+from shared.tools import McpToolsUnavailable, ScriptedToolModel, build_agent, mcp_tools, stdio_server
 from shared.tools.agent import AgentRun, Observation, run_agent
 from task10_maintenance import app as app_module
 from task10_maintenance import drafting
@@ -67,6 +67,7 @@ from task10_maintenance.lookup import (
     question_for,
     read_run,
 )
+from task10_maintenance.loop import selector_loop_factory, subprocess_loop
 from task10_maintenance.mcp_server import server as mcp_server
 from task10_maintenance.report import NotAReport, build_report, render_markdown
 from task10_maintenance.review import MAX_ATTEMPTS, MAX_REVISIONS, build_case_graph, start_input
@@ -309,7 +310,8 @@ def test_the_step_budget_is_reachable(budget, exhausted):
 
 def test_the_mcp_server_opens_exactly_the_read_only_tools():
     """MCP 로 나가는 표면을 **실제로 띄워서** 센다."""
-    tools = asyncio.run(mcp_tools({"history": stdio_server(MCP_SERVER_MODULE, pass_env=("DATABASE_URL",))}))
+    tools = asyncio.run(mcp_tools({"history": stdio_server(MCP_SERVER_MODULE, pass_env=("DATABASE_URL",))}),
+                        loop_factory=subprocess_loop)
     assert {t.name for t in tools} == set(READ_ONLY_TOOLS)
     assert set(mcp_server._tool_manager._tools) == set(READ_ONLY_TOOLS)
 
@@ -318,7 +320,7 @@ def test_local_and_mcp_paths_give_the_same_answer(monkeypatch):
     card = _card("S08")
     local = asyncio.run(lookup(card))
     monkeypatch.setenv("MCP_MODE", "on")
-    remote = asyncio.run(lookup(card))
+    remote = asyncio.run(lookup(card), loop_factory=subprocess_loop)
     assert [h.evidence_id for h in remote.history] == [h.evidence_id for h in local.history]
     assert remote.history_types == local.history_types
 
@@ -743,3 +745,49 @@ def test_diagnostics_names_the_single_database(client):
     assert body["database"] == "postgres (pgvector)"
     assert body["thread_durability"] == "postgres"
     assert body["pgvector_collection"] == "task10-manuals-recorded-256"
+
+
+# =============================================================================
+# Windows — psycopg 비동기 연결은 Windows 기본 루프(Proactor)를 거부한다
+# =============================================================================
+
+def test_uvicorn_accepts_the_selector_loop_option():
+    """문서의 실행 명령(--loop task10_maintenance.loop:selector_loop_factory)을 uvicorn 이 그대로 받는다."""
+    import uvicorn
+
+    config = uvicorn.Config("task10_maintenance.app:app", loop="task10_maintenance.loop:selector_loop_factory")
+    factory = config.get_loop_factory()
+    assert factory is selector_loop_factory
+    loop = factory()                     # uvicorn 이 하는 것과 같다: 인자 없이 불러 루프를 받는다
+    try:
+        assert isinstance(loop, asyncio.SelectorEventLoop)
+    finally:
+        loop.close()
+
+
+def test_a_proactor_refusal_says_how_to_fix_it(monkeypatch):
+    """종류(InterfaceError)만 말하면 못 고친다. 실제로 그랬다. 원인 문장과 고치는 명령을 함께 말한다."""
+    import psycopg
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    from shared.graph.checkpoint import ThreadStoreError, thread_store
+
+    def refuse(*args, **kwargs):
+        raise psycopg.InterfaceError("Psycopg cannot use the 'ProactorEventLoop' to run in async mode.")
+
+    monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", refuse)
+    with pytest.raises(ThreadStoreError) as caught:
+        asyncio.run(thread_store())
+    message = str(caught.value)
+    assert "ProactorEventLoop" in message
+    assert "--loop task10_maintenance.loop:selector_loop_factory" in message
+
+
+def test_mcp_on_windows_selector_loop_is_refused_with_a_reason(monkeypatch):
+    """Windows 의 Selector 루프는 하위 Process 를 못 띄운다. 조용히 죽지 않고 이유를 말한다."""
+    from task10_maintenance import lookup as lookup_module
+
+    monkeypatch.setenv("MCP_MODE", "on")
+    monkeypatch.setattr(lookup_module.sys, "platform", "win32")
+    with pytest.raises(McpToolsUnavailable, match="MCP_MODE=off"):
+        asyncio.run(lookup_module.lookup_tools(), loop_factory=asyncio.SelectorEventLoop)

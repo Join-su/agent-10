@@ -35,7 +35,8 @@ services:
   task10:
     build: .
     # 과제 10 API. 검토 대기 건도 db 에 남아 재시작을 넘는다.
-    command: ["uvicorn", "task10_maintenance.app:app", "--host", "0.0.0.0", "--port", "8035"]
+    command: ["uvicorn", "task10_maintenance.app:app", "--host", "0.0.0.0", "--port", "8035",
+              "--loop", "task10_maintenance.loop:selector_loop_factory"]
     environment:
       APP_MODE: ${APP_MODE:-fixture}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

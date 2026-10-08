@@ -121,13 +121,18 @@ uv run --env-file .env python scripts/task10/load_history.py     # 정비 이력
 
 ```bash
 # 터미널 1 — API
-uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env
+uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env --loop task10_maintenance.loop:selector_loop_factory
 # 터미널 2 — 화면
 uv run streamlit run streamlit_app.py
 ```
 
 `--env-file .env` 가 모드와 설정을 읽는다. 그래서 명령 앞에 환경 변수를 붙일
 필요가 없고, Windows 에서도 그대로 동작한다.
+
+**`--loop task10_maintenance.loop:selector_loop_factory` 를 빼지 않는다.** 검토 대기 건 저장소는
+psycopg 의 비동기 연결을 쓰는데, psycopg 는 Windows 의 기본 이벤트 루프(Proactor)를 거부한다.
+빼면 Windows 에서 "검토 대기 건 저장소(Postgres)를 열 수 없습니다 (InterfaceError …ProactorEventLoop…)"
+503 이 난다. macOS·Linux 는 원래 이 루프라 붙여도 바뀌는 것이 없다. 그래서 모든 OS 에서 같은 명령을 쓴다.
 
 브라우저에서 **http://127.0.0.1:8501** 을 연다. 대표 사례 S01~S10 중 하나를 골라
 "처리 시작" → 정비 기술자 결정 → 보고서까지 가 본다. '평가' 탭에서 시스템 재현율을 본다.
@@ -245,6 +250,10 @@ docker compose down -v         # DB 데이터까지 지운다 (다음에 다시 
 
 ## 6. 선택 기능 — MCP
 
+> **Windows 로컬 실행에서는 쓸 수 없다.** 위의 Selector 루프는 Windows 에서 하위 Process 를
+> 띄우지 못한다. Windows 에서 MCP 를 보려면 Docker(§5)로 띄운다. 로컬에서 켜면 앱이 이유를 담은
+> 503 을 돌려준다. Notebook 07 은 Windows 에서도 MCP 서버를 띄운다(루프를 직접 고른다).
+
 `.env` 에 `MCP_MODE=on` 을 적고 평소대로 띄운다. 앱이 `task10_maintenance.mcp_server` 를
 자식 Process 로 띄워 읽기 전용 Tool 4개를 받아 온다. 서버 Process 에는 DB 주소(`DATABASE_URL`)만
 넘기고 API 키는 넘기지 않는다. `GET /diagnostics` 의 `tool_source` 가 `mcp` 로 바뀐다. 결과는
@@ -311,6 +320,8 @@ sequenceDiagram
 | 증상 | 원인과 조치 |
 |---|---|
 | `/health` 가 `mode: fixture` | 셸에 `APP_MODE` 가 export 되어 `.env` 를 덮었다. 셸에서 지우고 다시 실행 |
+| **503** — `검토 대기 건 저장소(Postgres)를 열 수 없습니다 (InterfaceError … ProactorEventLoop …)` | **Windows** 에서 uvicorn 명령의 `--loop task10_maintenance.loop:selector_loop_factory` 를 빠뜨렸다. §2 의 명령 그대로 다시 띄운다 |
+| **503** — `Windows 로컬 실행에서는 MCP_MODE=on 을 쓸 수 없습니다` | `.env` 에서 `MCP_MODE=off` 로 두거나 Docker 로 띄운다(§6) |
 | **503** — `DATABASE_URL 이 필요합니다` | `.env` 가 없거나 안 읽혔다. `cp .env.example .env` 후 §2 |
 | **503** — `Postgres 에 붙을 수 없습니다` / `저장소(Postgres)를 열 수 없습니다` | DB 가 안 떠 있거나 포트가 틀렸다(호스트는 **5434**). `docker compose up -d db` |
 | **503** — `매뉴얼 청크가 없습니다` / `정비 이력이 없습니다` | 적재 전이다. §2 의 적재 두 줄 |

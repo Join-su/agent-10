@@ -104,7 +104,9 @@ def test_every_mcp_server_opens_exactly_the_read_only_tools(project):
     from shared.tools import mcp_tools, stdio_server
 
     expected = set(importlib.import_module(f"{project}.tools").READ_ONLY_TOOLS)
-    opened = asyncio.run(mcp_tools({"probe": stdio_server(f"{project}.mcp_server")}))
+    from task10_maintenance.loop import subprocess_loop
+
+    opened = asyncio.run(mcp_tools({"probe": stdio_server(f"{project}.mcp_server")}), loop_factory=subprocess_loop)
 
     assert {t.name for t in opened} == expected, [t.name for t in opened]
     assert expected, f"{project} 가 Tool 을 하나도 선언하지 않았다"

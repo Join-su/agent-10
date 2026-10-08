@@ -21,4 +21,4 @@ COPY streamlit_app.py curriculum_manifest.yaml notebook_contracts.yaml ./
 ENV PATH="/app/.venv/bin:${PATH}"
 EXPOSE 8035 8501
 
-CMD ["uvicorn", "task10_maintenance.app:app", "--host", "0.0.0.0", "--port", "8035"]
+CMD ["uvicorn", "task10_maintenance.app:app", "--host", "0.0.0.0", "--port", "8035", "--loop", "task10_maintenance.loop:selector_loop_factory"]

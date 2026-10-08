@@ -32,10 +32,13 @@ uv run pytest -q
 
 | 하고 싶은 것 | 명령 |
 |---|---|
-| API (fixture) | `uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env` |
+| API (fixture) | `uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env --loop task10_maintenance.loop:selector_loop_factory` |
 | 화면 | `uv run streamlit run streamlit_app.py` → http://127.0.0.1:8501 |
 | Notebook (DB 필요 없음) | `uv run jupyter lab task10_maintenance/notebooks` |
 | 컨테이너로 한 번에 (DB·적재·API·화면) | `docker compose --env-file .env up -d --build` |
+
+API 명령 끝의 `--loop task10_maintenance.loop:selector_loop_factory` 는 **Windows 에서 꼭 필요합니다**
+(DB 연결 라이브러리가 Windows 기본 이벤트 루프를 거부합니다). macOS·Linux 에서도 같은 명령을 씁니다.
 
 자세한 순서와 문제 해결은 [`docs/running-the-app.md`](docs/running-the-app.md).
 

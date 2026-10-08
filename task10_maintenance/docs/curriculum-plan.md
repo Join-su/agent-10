@@ -192,3 +192,13 @@ v2 에서 과제 10 만 떼어 `agent-10` 으로 만들었다. 실행 방법(fix
 | 평가 (pgvector·Postgres) | 대표 사례 10건 통과, 시스템 재현율 74.7% — 통일 전과 같음 |
 | JSONL 적재 | 정비 이력 410건 · 교체 부품 325행. SQLite 에서 옮겼을 때와 같음 |
 | Test | DB 를 붙여 221 통과 |
+
+### Windows 로컬 실행 (2026-10-08)
+
+팀원이 Windows 에서 로컬 실행하자 "검토 대기 건 저장소를 열 수 없습니다 (InterfaceError)" 503 이 났다. Docker(Linux)와 macOS 에서는 나지 않았다. 원인: uvicorn 이 Windows 에서 기본으로 `ProactorEventLoop` 를 쓰고, psycopg 비동기 연결(검토 대기 건 저장소)이 그 루프를 거부한다. 고친 것:
+
+- API 실행 명령에 `--loop task10_maintenance.loop:selector_loop_factory` 를 붙인다(모든 OS 같은 명령, Dockerfile·compose 포함)
+- 503 메시지에 원인 문장과 고치는 명령을 넣었다(전에는 오류 종류만 보여 원인을 못 찾았다)
+- Test 는 Windows 에서 Selector 루프 정책을 쓰고, MCP 서버를 띄우는 Test·Notebook 07 은 하위 Process 용 루프를 직접 고른다
+- 제약: Windows 로컬 실행에서는 `MCP_MODE=on` 불가(Selector 루프는 하위 Process 를 못 띄움). 앱이 이유를 담은 503 을 낸다. Docker 에서는 된다
+- Windows 에서 실제로 풀리는지는 이 저장소의 CI(Linux)로 확인할 수 없다. 원인과 해결은 psycopg·uvicorn 코드로 확인했다

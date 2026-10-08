@@ -60,12 +60,23 @@ async def thread_store() -> BaseCheckpointSaver:
         await store.setup()
     except Exception as error:
         await stack.aclose()
+        # 종류만 말하면 원인을 못 찾는다. 실제로 Windows 에서 "InterfaceError" 만 보고 헤맸다.
+        hint = _windows_proactor_hint(error)
         raise ThreadStoreError(
-            f"검토 대기 건 저장소(Postgres)를 열 수 없습니다 ({type(error).__name__}). "
-            "DB 가 떠 있는지 확인하세요: docker compose ps db"
+            f"검토 대기 건 저장소(Postgres)를 열 수 없습니다 ({type(error).__name__}: {str(error)[:200]})."
+            + (hint or " DB 가 떠 있는지 확인하세요: docker compose ps db")
         ) from error
     _STORE, _STACK, _LOOP = store, stack, loop
     return _STORE
+
+
+def _windows_proactor_hint(error: BaseException) -> str:
+    """Windows 기본 루프 문제면 고치는 방법을 돌려준다. 앱이 그 방법(loop.py)을 갖고 있다."""
+    try:
+        from task10_maintenance.loop import windows_proactor_hint
+    except ImportError:
+        return ""
+    return windows_proactor_hint(error)
 
 
 def reset_thread_store() -> None:

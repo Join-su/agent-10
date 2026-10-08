@@ -20,7 +20,7 @@ uv run jupyter lab task10_maintenance/notebooks                      # Notebook 
 docker compose --env-file .env up -d db                              # DB: Postgres + pgvector 하나
 uv run --env-file .env python scripts/task10/ingest_manuals.py       # 매뉴얼 → pgvector (한 번)
 uv run --env-file .env python scripts/task10/load_history.py         # 정비 이력 → Postgres 표 (한 번)
-uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env
+uv run uvicorn task10_maintenance.app:app --port 8035 --env-file .env --loop task10_maintenance.loop:selector_loop_factory
 uv run streamlit run streamlit_app.py                                # 화면: 메뉴의 '과제 10 · 설비 이상 대응'
 uv run pytest -q                                                     # Test (DB 필요)
 
